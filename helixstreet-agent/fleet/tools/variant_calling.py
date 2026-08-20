@@ -42,6 +42,14 @@ def submit_deepvariant_job(user_id: str, bam_gcs_uri: str) -> dict:
     job_id = f"deepvariant-{safe_uid}-{int(time.time())}"
     output_vcf_gcs = f"gs://{config.DATA_BUCKET}/results/{user_id}/deepvariant/output.vcf.gz"
 
+    # GCS-FUSE trap: an empty directory has no backing object, so its entry
+    # evaporates from the mount once the kernel cache expires — and DeepVariant
+    # writes its VCF minutes after job start. Back the prefix with a real
+    # object so the output directory is durably visible inside the container.
+    clients.storage().bucket(config.DATA_BUCKET).blob(
+        f"results/{user_id}/deepvariant/.keep"
+    ).upload_from_string(b"")
+
     flags = [
         "--model_type=WGS",
         f"--ref={_gcs_to_mount(config.REFERENCE_FASTA)}",
