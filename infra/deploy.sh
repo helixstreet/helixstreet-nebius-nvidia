@@ -73,7 +73,7 @@ gcloud run deploy helixstreet-fleet \
   --source "${REPO_ROOT}/helixstreet-agent" \
   --service-account "$FLEET_SA_EMAIL" \
   --no-allow-unauthenticated \
-  --memory 1Gi --timeout 900 \
+  --memory 1Gi --timeout 900 --max-instances 3 \
   --set-env-vars "GOOGLE_GENAI_USE_VERTEXAI=TRUE,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=global,BATCH_LOCATION=${REGION},DATA_BUCKET=${DATA_BUCKET},GEMINI_MODEL=${GEMINI_MODEL},BATCH_SERVICE_ACCOUNT=${BATCH_SA_EMAIL}"
 
 echo "==> Deploying dashboard (Cloud Run)"
@@ -82,7 +82,7 @@ gcloud run deploy helixstreet-dashboard \
   --source "${REPO_ROOT}/helixstreet-ui" \
   --service-account "$UI_SA_EMAIL" \
   --allow-unauthenticated \
-  --memory 512Mi \
+  --memory 512Mi --max-instances 2 \
   --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},DATA_BUCKET=${DATA_BUCKET}"
 
 echo "==> Eventarc trigger (GCS object finalized -> fleet /eventarc)"
