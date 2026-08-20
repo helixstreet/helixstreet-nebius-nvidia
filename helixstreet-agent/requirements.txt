@@ -1,4 +1,11 @@
 fastapi
-uvicorn
-google-antigravity
+uvicorn[standard]
+google-adk>=1.0.0
+google-genai
 google-cloud-firestore
+google-cloud-storage
+google-cloud-batch
+google-cloud-dlp
+google-cloud-bigquery
+google-auth
+requests

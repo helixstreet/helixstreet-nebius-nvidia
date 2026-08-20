@@ -1,3 +1,4 @@
-streamlit
+streamlit>=1.49
 google-cloud-firestore
+google-cloud-storage
 pandas
