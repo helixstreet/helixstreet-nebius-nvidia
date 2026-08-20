@@ -86,7 +86,7 @@ gcloud run deploy helixstreet-dashboard \
   --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},DATA_BUCKET=${DATA_BUCKET}"
 
 echo "==> Eventarc trigger (GCS object finalized -> fleet /eventarc)"
-GCS_SA="$(gcloud storage service-agent --project "$PROJECT_ID")"
+GCS_SA="$(gcloud storage service-agent --project "$PROJECT_ID" | xargs)"
 grant "$GCS_SA" roles/pubsub.publisher
 grant "$FLEET_SA_EMAIL" roles/eventarc.eventReceiver
 gcloud run services add-iam-policy-binding helixstreet-fleet \
