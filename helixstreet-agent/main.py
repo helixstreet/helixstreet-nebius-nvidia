@@ -56,9 +56,13 @@ def _parse_gcs_event(body: dict) -> tuple[str, str, str]:
     raise ValueError(f"Unrecognized event payload keys: {list(body)}")
 
 
-def _already_processed(bucket: str, name: str, generation: str) -> bool:
+def _event_ref(bucket: str, name: str, generation: str):
     doc_id = re.sub(r"[^A-Za-z0-9_-]", "_", f"{bucket}_{name}_{generation}")[:900]
-    ref = clients.firestore().collection(config.COLL_EVENTS).document(doc_id)
+    return clients.firestore().collection(config.COLL_EVENTS).document(doc_id)
+
+
+def _already_processed(bucket: str, name: str, generation: str) -> bool:
+    ref = _event_ref(bucket, name, generation)
     if ref.get().exists:
         return True
     ref.set({"bucket": bucket, "object": name, "generation": generation})
@@ -99,5 +103,11 @@ async def handle_eventarc(request: Request):
         log.info("Duplicate delivery for gs://%s/%s, skipping.", bucket, name)
         return {"status": "duplicate", "object": name}
 
-    final = await run_pipeline(pipeline, uid, prompt)
+    try:
+        final = await run_pipeline(pipeline, uid, prompt)
+    except Exception:
+        # Release the idempotency claim so Eventarc's retry can reprocess —
+        # otherwise a transient failure permanently swallows the event.
+        _event_ref(bucket, name, generation).delete()
+        raise
     return {"status": "completed", "pipeline": pipeline.name, "user_id": uid, "summary": final}

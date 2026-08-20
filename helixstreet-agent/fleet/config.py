@@ -2,7 +2,11 @@
 import os
 
 PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "helixstreet-agent")
-LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "us-central1")
+# Gemini via Vertex AI: gemini-3.5-flash is served from the global endpoint.
+# google-genai/ADK read GOOGLE_CLOUD_LOCATION directly, so it must be "global".
+VERTEX_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "global")
+# Regional resources (Cloud Batch jobs) cannot use "global".
+LOCATION = os.getenv("BATCH_LOCATION", "us-central1")
 
 # Hackathon requirement: Gemini 3.5 or newer, served through Vertex AI.
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
