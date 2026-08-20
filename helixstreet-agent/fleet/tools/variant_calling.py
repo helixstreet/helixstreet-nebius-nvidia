@@ -42,8 +42,7 @@ def submit_deepvariant_job(user_id: str, bam_gcs_uri: str) -> dict:
     job_id = f"deepvariant-{safe_uid}-{int(time.time())}"
     output_vcf_gcs = f"gs://{config.DATA_BUCKET}/results/{user_id}/deepvariant/output.vcf.gz"
 
-    commands = [
-        "/opt/deepvariant/bin/run_deepvariant",
+    flags = [
         "--model_type=WGS",
         f"--ref={_gcs_to_mount(config.REFERENCE_FASTA)}",
         f"--reads={_gcs_to_mount(bam_gcs_uri)}",
@@ -52,11 +51,20 @@ def submit_deepvariant_job(user_id: str, bam_gcs_uri: str) -> dict:
         "--intermediate_results_dir=/tmp/deepvariant_intermediate",
     ]
     if config.DEEPVARIANT_REGIONS:
-        commands.append(f"--regions={config.DEEPVARIANT_REGIONS}")
+        flags.append(f"--regions={config.DEEPVARIANT_REGIONS}")
 
+    # GCS has no real directories: htslib cannot open output.vcf.gz inside a
+    # prefix that holds no objects yet, so create it via the FUSE mount first.
+    out_dir_mount = f"{MOUNT}/results/{user_id}/deepvariant"
+    script = (
+        f"mkdir -p {out_dir_mount} && "
+        "/opt/deepvariant/bin/run_deepvariant " + " ".join(flags)
+    )
     runnable = batch_v1.Runnable(
         container=batch_v1.Runnable.Container(
-            image_uri=config.DEEPVARIANT_IMAGE, commands=commands
+            image_uri=config.DEEPVARIANT_IMAGE,
+            entrypoint="/bin/sh",
+            commands=["-c", script],
         )
     )
     task = batch_v1.TaskSpec(
