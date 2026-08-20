@@ -9,6 +9,8 @@ two pipelines — while DeepVariant runs on Cloud Batch — is bridged by the
 Firestore Memory Bank.
 """
 from google.adk.agents import Agent, SequentialAgent
+from google.adk.models.google_llm import Gemini
+from google.genai import types as genai_types
 
 from . import config
 from .tools.audit import record_audit_event
@@ -18,9 +20,22 @@ from .tools.genomics import annotate_with_1000genomes, parse_vcf
 from .tools.memory import get_pipeline_state, save_digital_twin, update_pipeline_state
 from .tools.variant_calling import get_batch_job_status, submit_deepvariant_job
 
+# New models ship with thin per-minute quotas; back off through the quota
+# window instead of failing the whole pipeline on a transient 429.
+GEMINI = Gemini(
+    model=config.GEMINI_MODEL,
+    retry_options=genai_types.HttpRetryOptions(
+        attempts=5,
+        initial_delay=15,
+        max_delay=120,
+        exp_base=2,
+        http_status_codes=[429, 500, 503, 504],
+    ),
+)
+
 intake_agent = Agent(
     name="helixstreet_intake",
-    model=config.GEMINI_MODEL,
+    model=GEMINI,
     description="Compliance gatekeeper: screens and de-identifies incoming data.",
     instruction="""You are the Intake & Compliance agent of the Helixstreet fleet.
 A new genomic sample upload event will be described to you, including the GCS
@@ -42,7 +57,7 @@ repeating the user_id and the BAM gs:// URI exactly as given to you.""",
 
 variant_caller_agent = Agent(
     name="helixstreet_variant_caller",
-    model=config.GEMINI_MODEL,
+    model=GEMINI,
     description="Dispatches Google DeepVariant on Cloud Batch for async variant calling.",
     instruction="""You are the Variant Calling agent of the Helixstreet fleet.
 The intake agent has cleared a sample. From the conversation, extract the
@@ -59,7 +74,7 @@ poll — end your turn after dispatching.""",
 
 analyst_agent = Agent(
     name="helixstreet_analyst",
-    model=config.GEMINI_MODEL,
+    model=GEMINI,
     description="Parses DeepVariant output and adds 1000 Genomes population context.",
     instruction="""You are the Genomics Analyst agent of the Helixstreet fleet.
 A DeepVariant result VCF has landed; its gs:// URI and the user_id will be in
@@ -79,7 +94,7 @@ frame findings as research-grade annotations only.""",
 
 steward_agent = Agent(
     name="helixstreet_steward",
-    model=config.GEMINI_MODEL,
+    model=GEMINI,
     description="Persists the digital twin to the Memory Bank and closes the audit trail.",
     instruction="""You are the Data Steward agent of the Helixstreet fleet.
 Take the analyst's findings from the conversation above and:
