@@ -10,6 +10,8 @@ the fleet is woken by storage events and works entirely in the background.
 
 ## Architecture
 
+![Architecture diagram](docs/architecture.png)
+
 ```mermaid
 flowchart LR
     subgraph Client
