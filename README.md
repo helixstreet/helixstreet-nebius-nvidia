@@ -67,6 +67,39 @@ Routing between pipelines is deterministic (Eventarc events → regex router); e
 *within* each stage is agentic — Gemini decides tool order, handles missing manifests,
 blocked screens, and degraded services, and writes the audit narrative.
 
+## Why agents, not a static workflow?
+
+A Cloud Workflows YAML could chain these API calls — until reality deviates from the
+happy path. The agents absorb the variability that makes static pipelines brittle:
+
+- **Missing or malformed inputs**: no manifest? The intake agent notes it, audits it
+  (`MANIFEST_MISSING`), and continues — no dead branch to hand-code.
+- **Degraded dependencies**: if Cloud DLP is unreachable, the agent falls back to a
+  local scrubber and *records which engine it used* in the audit trail.
+- **Data surprises**: in a live run, the analyst agent noticed unprompted that the VCF
+  and BigQuery coordinates disagree by one base pair (VCF is 1-based, BigQuery's
+  `start_position` is 0-based) and reasoned through the population matching anyway —
+  a mismatch that would have silently produced zero matches in a join-by-position ETL.
+- **Narrative compliance**: every audit entry is written by the agent that did the
+  work, in context — auditors read what happened and why, not just status codes.
+
+## Self-healing & exactly-once processing
+
+The fleet is built for the failure modes that long-running, event-driven systems
+actually hit (each mechanism below was exercised by a real incident during development):
+
+| Mechanism | What it prevents |
+|---|---|
+| Idempotency claims per `(bucket, object, generation)` in Firestore | Eventarc at-least-once delivery re-running a pipeline ("the agent that orders two laptops") |
+| Claim **release on failure** | A transient crash permanently swallowing an event — the retry reprocesses it |
+| Eventarc retry with backoff (fleet returns 5xx on failure) | Lost work: no cron, no manual replay, the platform redelivers |
+| Model-level 429 backoff (`HttpRetryOptions`, 15s→120s) | New-model per-minute quota limits failing a whole pipeline mid-flight |
+| Serialized processing (`concurrency=1`) + max-instance caps | Pipelines cannibalizing each other's model quota; runaway spend |
+| Pinned dependencies (all 78) | An upstream release changing behavior between build and judging |
+
+The combination was proven live: a quota-exhausted analysis run failed, released its
+claim, was redelivered by Eventarc minutes later, and completed — zero human touches.
+
 ## Enterprise-fleet pillars → implementation
 
 | Pillar | Where |
@@ -75,9 +108,10 @@ blocked screens, and degraded services, and writes the audit narrative.
 | Agent Runtime (async, long-running) | Eventarc-driven Cloud Run + Cloud Batch for heavy compute |
 | Memory Bank | Firestore `digital_twins` + `pipeline_state` (bridges the async gap) |
 | Agent Identity | 3 service accounts, least-privilege IAM (`infra/deploy.sh`) — the analyst can read BigQuery but cannot launch compute; the dashboard can read state but cannot call agents |
-| Guardrails | Model Armor prompt screening + Cloud DLP de-identification at intake |
-| Telemetry | Structured JSON logs to Cloud Logging + full reasoning trace mirrored to Firestore (live in the dashboard) |
+| Guardrails | **Model Armor** template (prompt-injection/jailbreak, malicious URI, PII filters) screening every manifest at intake + Cloud DLP de-identification |
+| Telemetry | **OpenTelemetry** spans (agent runs, LLM calls, tool calls) exported to **Cloud Trace** + structured JSON logs + reasoning trace mirrored to Firestore (live in the dashboard) |
 | Provenance | Hash-chained audit ledger; the dashboard re-verifies the chain on every refresh |
+| Agent Gateway | Deliberately *not* a separate hop: Eventarc + per-service IAM **is** the routing and policy layer for an event-driven fleet — every invocation is authenticated, authorized, and auditable at the platform level |
 
 ## Hackathon requirements
 

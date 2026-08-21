@@ -32,8 +32,31 @@ _VCF_UPLOAD_RE = re.compile(r"^uploads/(?P<uid>[^/]+)/[^/]+\.vcf(\.gz)?$")
 _RESULT_RE = re.compile(r"^results/(?P<uid>[^/]+)/deepvariant/output\.vcf\.gz$")
 
 
+def _init_tracing():
+    """Exports ADK's OpenTelemetry spans (agent runs, LLM calls, tool calls)
+    to Cloud Trace, giving end-to-end reasoning-chain traces per pipeline."""
+    from opentelemetry import trace
+    from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
+    from opentelemetry.sdk.resources import Resource
+    from opentelemetry.sdk.trace import TracerProvider
+    from opentelemetry.sdk.trace.export import BatchSpanProcessor
+
+    provider = TracerProvider(
+        resource=Resource.create({"service.name": "helixstreet-fleet"})
+    )
+    provider.add_span_processor(
+        BatchSpanProcessor(CloudTraceSpanExporter(project_id=config.PROJECT_ID))
+    )
+    trace.set_tracer_provider(provider)
+
+
 @app.on_event("startup")
 def startup():
+    try:
+        _init_tracing()
+        log.info("OpenTelemetry -> Cloud Trace export active.")
+    except Exception as e:  # tracing is observability, never availability
+        log.warning("Tracing init skipped: %s", e)
     try:
         n = publish_registry()
         log.info("Agent Registry published: %d agent cards.", n)

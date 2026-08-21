@@ -21,7 +21,8 @@ gcloud services enable --project "$PROJECT_ID" \
   dlp.googleapis.com firestore.googleapis.com bigquery.googleapis.com \
   storage.googleapis.com aiplatform.googleapis.com \
   artifactregistry.googleapis.com cloudbuild.googleapis.com \
-  pubsub.googleapis.com logging.googleapis.com
+  pubsub.googleapis.com logging.googleapis.com \
+  cloudtrace.googleapis.com modelarmor.googleapis.com
 
 echo "==> Firestore (native mode)"
 gcloud firestore databases create --project "$PROJECT_ID" --location "$REGION" \
@@ -44,9 +45,11 @@ UI_SA_EMAIL="${UI_SA}@${PROJECT_ID}.iam.gserviceaccount.com"
 grant() { gcloud projects add-iam-policy-binding "$PROJECT_ID" \
   --member "serviceAccount:$1" --role "$2" --condition=None --quiet >/dev/null; }
 
-# Fleet agents: orchestrate, redact, dispatch Batch, query BQ, call Vertex.
+# Fleet agents: orchestrate, redact, dispatch Batch, query BQ, call Vertex,
+# export OpenTelemetry traces, screen inputs with Model Armor.
 for ROLE in roles/datastore.user roles/dlp.user roles/batch.jobsEditor \
-            roles/bigquery.jobUser roles/aiplatform.user roles/logging.logWriter; do
+            roles/bigquery.jobUser roles/aiplatform.user roles/logging.logWriter \
+            roles/cloudtrace.agent roles/modelarmor.user; do
   grant "$FLEET_SA_EMAIL" "$ROLE"
 done
 # DeepVariant VMs: read/write the data bucket, report to Batch, write logs.
@@ -74,7 +77,15 @@ gcloud run deploy helixstreet-fleet \
   --service-account "$FLEET_SA_EMAIL" \
   --no-allow-unauthenticated \
   --memory 1Gi --timeout 900 --max-instances 3 \
-  --set-env-vars "GOOGLE_GENAI_USE_VERTEXAI=TRUE,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=global,BATCH_LOCATION=${REGION},DATA_BUCKET=${DATA_BUCKET},GEMINI_MODEL=${GEMINI_MODEL},BATCH_SERVICE_ACCOUNT=${BATCH_SA_EMAIL}"
+  --set-env-vars "GOOGLE_GENAI_USE_VERTEXAI=TRUE,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=global,BATCH_LOCATION=${REGION},DATA_BUCKET=${DATA_BUCKET},GEMINI_MODEL=${GEMINI_MODEL},BATCH_SERVICE_ACCOUNT=${BATCH_SA_EMAIL},MODEL_ARMOR_TEMPLATE=${MODEL_ARMOR_TEMPLATE:-}"
+
+# Optional inline guardrails: create the Model Armor template once with
+#   gcloud model-armor templates create helixstreet-guard --location $REGION \
+#     --pi-and-jailbreak-filter-settings-enforcement=enabled \
+#     --pi-and-jailbreak-filter-settings-confidence-level=medium-and-above \
+#     --malicious-uri-filter-settings-enforcement=enabled \
+#     --basic-config-filter-enforcement=enabled
+# then redeploy with MODEL_ARMOR_TEMPLATE=projects/$PROJECT_ID/locations/$REGION/templates/helixstreet-guard
 
 echo "==> Deploying dashboard (Cloud Run)"
 gcloud run deploy helixstreet-dashboard \
