@@ -19,7 +19,8 @@ QUICKSTART_BUCKET = "deepvariant"
 QUICKSTART_PREFIX = "quickstart-testdata"
 QUICKSTART_BAM = "NA12878_S1.chr20.10_10p1mb.bam"
 
-st.set_page_config(page_title="Helixstreet | Fleet command", layout="wide", page_icon="🧬")
+st.set_page_config(page_title="Helixstreet | Fleet command", layout="wide", page_icon="logo.png")
+st.logo("logo.svg", size="large")
 
 
 @st.cache_resource
@@ -94,7 +95,9 @@ def start_demo_run(user_id: str) -> str:
     return f"gs://{DATA_BUCKET}/uploads/{user_id}/sample.bam"
 
 
-st.title("🧬 Helixstreet — autonomous genomic fleet")
+with st.container(horizontal=True, vertical_alignment="center"):
+    st.image("logo.svg", width=72)
+    st.title("Helixstreet — autonomous genomic fleet")
 st.caption(
     f"Project `{PROJECT_ID}` · bucket `gs://{DATA_BUCKET}` · "
     "GCS → Eventarc → Cloud Run (ADK fleet) → DeepVariant on Cloud Batch → Firestore"

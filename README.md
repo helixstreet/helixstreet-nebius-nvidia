@@ -1,4 +1,9 @@
-# 🧬 Helixstreet — an autonomous genomic fleet
+<img src="docs/logo.svg" width="110" align="left" alt="Helixstreet logo">
+
+# Helixstreet — an autonomous genomic fleet
+
+<br clear="left">
+
 
 **All Things Agentic Hackathon · Track: The Fortified Enterprise Fleet**
 
