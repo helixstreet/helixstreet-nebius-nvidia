@@ -4,3 +4,5 @@ __pycache__/
 .claude/
 .agents/
 .gitignore
+tests/
+requirements-dev.txt

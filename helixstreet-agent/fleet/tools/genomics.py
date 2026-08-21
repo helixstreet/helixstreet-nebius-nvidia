@@ -23,9 +23,13 @@ def parse_vcf(vcf_gcs_uri: str) -> dict:
     raw = clients.storage().bucket(bucket).blob(name).download_as_bytes()
     if name.endswith(".gz"):
         raw = gzip.decompress(raw)
+    return summarize_vcf_text(raw.decode("utf-8", errors="replace"), vcf_gcs_uri)
 
+
+def summarize_vcf_text(text: str, source: str) -> dict:
+    """Pure parsing core of parse_vcf; separated for testability."""
     total, passed, variants = 0, 0, []
-    for line in io.StringIO(raw.decode("utf-8", errors="replace")):
+    for line in io.StringIO(text):
         if line.startswith("#"):
             continue
         fields = line.rstrip("\n").split("\t")
@@ -52,7 +56,7 @@ def parse_vcf(vcf_gcs_uri: str) -> dict:
                 }
             )
     return {
-        "source": vcf_gcs_uri,
+        "source": source,
         "total_records": total,
         "pass_variants": passed,
         "variants": variants,
