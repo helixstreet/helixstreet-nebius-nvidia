@@ -42,6 +42,15 @@ def test_variant_list_is_capped():
     assert len(result["variants"]) == MAX_VARIANTS_RETURNED
 
 
+def test_bare_gt_format_still_yields_genotype():
+    # Panel VCFs often carry FORMAT=GT with no subfields — regression for the
+    # bug where colon-less genotype columns were silently dropped.
+    vcf = "##x\n#h\nchr10\t94781859\trs4244285\tG\tA\t60\tPASS\t.\tGT\t1/1\n"
+    v = summarize_vcf_text(vcf, "gs://t/panel.vcf")["variants"][0]
+    assert v["genotype"] == "1/1"
+    assert v["id"] == "rs4244285"
+
+
 def test_malformed_lines_ignored():
     result = summarize_vcf_text("##x\nnot-a-variant-line\n", "gs://t/bad.vcf")
     assert result["total_records"] == 0

@@ -41,7 +41,7 @@ def summarize_vcf_text(text: str, source: str) -> dict:
             continue
         passed += 1
         genotype = ""
-        if len(fields) >= 10 and ":" in fields[9]:
+        if len(fields) >= 10:
             genotype = fields[9].split(":")[0]
         if len(variants) < MAX_VARIANTS_RETURNED:
             variants.append(
