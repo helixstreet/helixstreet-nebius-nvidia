@@ -185,6 +185,18 @@ with tab_runs:
         )
         st.dataframe(overview, hide_index=True, width="stretch")
 
+        with st.container(horizontal=True):
+            st.link_button(
+                "Reasoning-chain traces in Cloud Trace",
+                f"https://console.cloud.google.com/traces/list?project={PROJECT_ID}",
+                icon=":material/timeline:",
+            )
+            st.link_button(
+                "DeepVariant jobs in Cloud Batch",
+                f"https://console.cloud.google.com/batch/jobs?project={PROJECT_ID}",
+                icon=":material/memory:",
+            )
+
         selected = st.selectbox("Reasoning trace for", [s["id"] for s in states])
         trace = next((s.get("trace", []) for s in states if s["id"] == selected), [])
         if not trace:
@@ -213,8 +225,48 @@ with tab_twins:
         st.success(f"{len(twins)} digital twin(s) in the Memory Bank")
         selected = st.selectbox("Twin", [t["id"] for t in twins])
         twin = next(t for t in twins if t["id"] == selected)
+        data = twin.get("twin", {})
         with st.container(border=True):
             st.markdown(f"**{selected}** · status: {twin.get('status','')}")
+            with st.container(horizontal=True):
+                st.metric("Variants called", data.get("variants_called", "—"), border=True)
+                st.metric(
+                    "PGx flags", len(data.get("medication_insights", []) or []), border=True
+                )
+            if data.get("population_context"):
+                st.markdown(f"**Population context:** {data['population_context']}")
+
+        insights = data.get("medication_insights") or []
+        if insights:
+            st.subheader("Medication insights (research-grade)")
+            for ins in insights:
+                with st.container(border=True):
+                    gene = ins.get("gene", "?")
+                    st.markdown(
+                        f"**{gene}** {ins.get('star_allele', ins.get('allele',''))} · "
+                        f":orange-badge[{ins.get('zygosity','')}] · "
+                        f"{ins.get('predicted_phenotype', ins.get('phenotype',''))}"
+                    )
+                    with st.container(horizontal=True):
+                        for drug in (ins.get("affected_drugs") or ins.get("drugs") or [])[:5]:
+                            st.markdown(f":blue-badge[{drug}]")
+                    guidance = ins.get("cpic_guidance") or ins.get("guidance")
+                    if guidance:
+                        st.caption(guidance)
+                    for cite in (ins.get("citations") or [])[:3]:
+                        if isinstance(cite, dict):
+                            st.markdown(
+                                f":material/article: *{cite.get('title','')}* "
+                                f"({cite.get('year','')}) — PMID {cite.get('pmid','')}"
+                            )
+                        else:
+                            st.markdown(f":material/article: {cite}")
+            st.caption(
+                "Research-grade annotations from a curated CPIC-derived reference — "
+                "not medical advice."
+            )
+
+        with st.expander("Raw twin record"):
             st.json(twin.get("twin", twin))
 
     twins_view()
