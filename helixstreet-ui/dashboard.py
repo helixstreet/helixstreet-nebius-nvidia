@@ -120,6 +120,31 @@ with st.sidebar:
         except Exception as e:
             st.error(f"Upload failed: {e}")
 
+    st.markdown("**Demo: pharmacogenomics panel (~3 min)**")
+    st.caption(
+        "Uploads a fully synthetic PGx genotype. The pharmacist agent screens "
+        "it against CPIC guidance and attaches live literature."
+    )
+    if st.button("Start PGx demo run", icon=":material/pill:"):
+        try:
+            pgx_uid = f"{user_id}-pgx"
+            manifest = {
+                "patient_name": "John Roe",  # synthetic PII for the DLP demo
+                "date_of_birth": "02/02/1975",
+                "sample_id": pgx_uid,
+                "assay": "Targeted pharmacogenomics panel (synthetic demo genotype)",
+                "consent": "research-use-only, fully synthetic sample",
+            }
+            bucket = storage_client().bucket(DATA_BUCKET)
+            bucket.blob(f"uploads/{pgx_uid}/manifest.json").upload_from_string(
+                json.dumps(manifest, indent=2)
+            )
+            with open("pgx-demo.vcf") as f:
+                bucket.blob(f"uploads/{pgx_uid}/pgx-panel.vcf").upload_from_string(f.read())
+            st.success(f"Uploaded PGx panel as '{pgx_uid}'. The fleet is on it.")
+        except Exception as e:
+            st.error(f"Upload failed: {e}")
+
     st.divider()
     st.markdown("**Bring your own file**")
     uploaded = st.file_uploader("BAM or VCF", type=["bam", "vcf", "gz"])
@@ -158,12 +183,13 @@ def kpi_row():
 
 kpi_row()
 
-tab_runs, tab_twins, tab_registry, tab_audit = st.tabs(
+tab_runs, tab_twins, tab_registry, tab_audit, tab_about = st.tabs(
     [
         ":material/monitor_heart: Pipeline runs",
         ":material/genetics: Digital twins",
         ":material/hub: Fleet registry",
         ":material/verified_user: Audit ledger",
+        ":material/info: About",
     ]
 )
 
@@ -289,6 +315,63 @@ with tab_registry:
                 for cap in card.get("capabilities", []):
                     st.markdown(f":blue-badge[{cap}]")
             st.caption("IAM: " + ", ".join(card.get("required_roles", [])))
+
+with tab_about:
+    col_logo, col_intro = st.columns([1, 3], vertical_alignment="center")
+    with col_logo:
+        st.image("logo-with-text.png", width=180)
+    with col_intro:
+        st.markdown(
+            "**Helixstreet** is an autonomous five-agent fleet for genomic data: "
+            "a file upload triggers compliance screening (Model Armor + Cloud DLP), "
+            "variant calling with **Google DeepVariant** on Cloud Batch, population "
+            "annotation against **1000 Genomes** in BigQuery, **CPIC** drug-gene "
+            "screening with live literature, and a tamper-evident digital twin — "
+            "with no human in the loop. Built with Google ADK on Gemini 3.5 Flash "
+            "(Vertex AI) for the All Things Agentic Hackathon."
+        )
+        st.caption(
+            "All demo data is public and consented (NA12878 / Genome in a Bottle, "
+            "1000 Genomes Phase 3) or fully synthetic. Research-grade only — "
+            "never medical advice."
+        )
+
+    with st.container(border=True):
+        st.subheader("Architecture")
+        st.image("architecture.png", width="stretch")
+
+    with st.container(border=True):
+        st.subheader("Enterprise-fleet pillars")
+        st.markdown(
+            """
+| Pillar | Implementation |
+|---|---|
+| Agent Registry | Firestore catalog, rendered in the *Fleet registry* tab |
+| Agent Runtime | Eventarc-driven Cloud Run + Cloud Batch for heavy compute; async resume via storage events |
+| Memory Bank | Firestore digital twins + pipeline state bridging multi-minute (or multi-week) gaps |
+| Agent Identity | Three least-privilege service accounts; the fleet endpoint accepts only Eventarc's identity |
+| Guardrails | Model Armor template (prompt-injection, malicious-URI, PII filters) + Cloud DLP redaction |
+| Observability | OpenTelemetry reasoning-chain traces in Cloud Trace + this dashboard's live traces |
+| Provenance | Hash-chained audit ledger, re-verified on every refresh in the *Audit ledger* tab |
+"""
+        )
+
+    with st.container(horizontal=True):
+        st.link_button(
+            "Source repository",
+            "https://github.com/helixstreet/helixstreet-all_things_agentic",
+            icon=":material/code:",
+        )
+        st.link_button(
+            "Cloud Trace",
+            f"https://console.cloud.google.com/traces/list?project={PROJECT_ID}",
+            icon=":material/timeline:",
+        )
+        st.link_button(
+            "Cloud Batch jobs",
+            f"https://console.cloud.google.com/batch/jobs?project={PROJECT_ID}",
+            icon=":material/memory:",
+        )
 
 with tab_audit:
 

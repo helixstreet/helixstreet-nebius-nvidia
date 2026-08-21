@@ -36,7 +36,7 @@ venv.bak/
 .env.*
 
 # Streamlit
-.streamlit/
+.streamlit/secrets.toml
 *.csv
 
 # OS generated files

@@ -1,0 +1,17 @@
+[theme]
+base = "light"
+primaryColor = "#288ab3"
+backgroundColor = "#ffffff"
+secondaryBackgroundColor = "#f2f7fa"
+textColor = "#122a42"
+linkColor = "#1d6f93"
+borderColor = "#d5e3ec"
+codeBackgroundColor = "#eef4f8"
+dataframeHeaderBackgroundColor = "#eef4f8"
+blueColor = "#288ab3"
+violetColor = "#3d3d99"
+font = "Inter:https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+chartCategoricalColors = ["#288ab3", "#1d2f6f", "#1a7f37", "#bf8700", "#cf222e"]
+
+[browser]
+gatherUsageStats = false
