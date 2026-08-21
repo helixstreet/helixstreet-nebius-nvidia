@@ -33,6 +33,15 @@ AGENT_CARDS = [
         "required_roles": ["roles/bigquery.jobUser", "roles/storage.objectViewer"],
     },
     {
+        "name": "helixstreet_pharmacist",
+        "version": "1.0.0",
+        "pipeline": "analysis",
+        "description": "Screens variants against a curated CPIC reference for drug-gene "
+                       "interactions; attaches Europe PMC literature evidence.",
+        "capabilities": ["pgx-star-allele-matching", "cpic-guidance", "europepmc-literature"],
+        "required_roles": ["roles/storage.objectViewer"],
+    },
+    {
         "name": "helixstreet_steward",
         "version": "1.0.0",
         "pipeline": "analysis",

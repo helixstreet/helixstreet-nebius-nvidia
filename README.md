@@ -24,6 +24,7 @@ flowchart LR
         A1[helixstreet_intake\nModel Armor + Cloud DLP]
         A2[helixstreet_variant_caller\nDeepVariant dispatch]
         A3[helixstreet_analyst\nVCF + 1000 Genomes]
+        A5[helixstreet_pharmacist\nCPIC drug-gene + literature]
         A4[helixstreet_steward\ntwin + audit]
     end
     subgraph Compute
@@ -40,12 +41,13 @@ flowchart LR
     GCS --> EA --> R
     R -- "*.bam uploaded" --> A1 --> A2 -- submit job --> B
     B -- writes output.vcf.gz --> GCS
-    R -- "output.vcf.gz landed (async resume)" --> A3 --> A4
+    R -- "output.vcf.gz landed (async resume)" --> A3 --> A5 --> A4
     A1 <--> MB
     A2 <--> MB
     A3 --> BQ
+    A5 --> EPMC[(Europe PMC\nliterature API)]
     A4 --> MB
-    A1 & A2 & A3 & A4 --> AUD
+    A1 & A2 & A3 & A5 & A4 --> AUD
     UI -. live reads .-> MB & REG & AUD
 ```
 
@@ -61,6 +63,7 @@ gaps between the two halves — the same mechanism would carry week-long jobs.
 | `helixstreet_intake` | ingest | Screens uploads with Model Armor, de-identifies manifests with **Cloud DLP** | `scrub_pii`, `screen_with_model_armor` |
 | `helixstreet_variant_caller` | ingest | Dispatches **DeepVariant** as an async **Cloud Batch** job, checkpoints state | `submit_deepvariant_job` |
 | `helixstreet_analyst` | analysis | Parses the VCF, queries **1000 Genomes** in BigQuery for population allele frequencies | `parse_vcf`, `annotate_with_1000genomes` |
+| `helixstreet_pharmacist` | analysis | Screens variants against a curated **CPIC** drug-gene reference; attaches **Europe PMC** literature evidence | `match_pgx_variants`, `search_literature` |
 | `helixstreet_steward` | analysis | Persists the digital twin, closes the hash-chained audit trail | `save_digital_twin`, `record_audit_event` |
 
 Routing between pipelines is deterministic (Eventarc events → regex router); execution
@@ -148,6 +151,19 @@ plus the public **NA12878** chr20 quickstart slice. Then watch, hands off:
 2. [Batch console](https://console.cloud.google.com/batch/jobs) — DeepVariant runs (~2–5 min on 4 vCPUs)
 3. The VCF lands → the fleet wakes itself → **Digital twins** tab fills in
 4. **Audit ledger** tab — the hash chain verifies end-to-end
+
+**Act two — pharmacogenomics (~2 min, no Batch wait):**
+
+```bash
+./scripts/run_pgx_demo.sh
+```
+
+Uploads a fully synthetic pharmacogenomics panel VCF; the router sends VCFs straight to
+the analysis fleet. The pharmacist agent screens the genotype against a curated CPIC
+level-A reference (e.g. detects a CYP2C19 *2/*2 poor metabolizer with impaired
+clopidogrel activation), attaches recent Europe PMC literature, and the twin gains a
+`medication_insights` section. BAM-derived VCFs carry no rsIDs, so DeepVariant runs
+report "no PGx variants" — production would join dbSNP in BigQuery to assign them.
 
 Cost: the demo slice (chr20:10,000,000–10,010,000) costs cents; everything fits far inside
 the $150 credit grant. Nothing needs to stay running between demos — redeploy anytime with

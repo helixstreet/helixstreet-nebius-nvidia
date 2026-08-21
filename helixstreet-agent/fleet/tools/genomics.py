@@ -32,7 +32,7 @@ def parse_vcf(vcf_gcs_uri: str) -> dict:
         if len(fields) < 8:
             continue
         total += 1
-        chrom, pos, _, ref, alt, qual, flt = fields[:7]
+        chrom, pos, var_id, ref, alt, qual, flt = fields[:7]
         if flt not in ("PASS", "."):
             continue
         passed += 1
@@ -44,6 +44,7 @@ def parse_vcf(vcf_gcs_uri: str) -> dict:
                 {
                     "chrom": chrom,
                     "pos": int(pos),
+                    "id": var_id,
                     "ref": ref,
                     "alt": alt,
                     "qual": float(qual) if qual not in (".", "") else None,

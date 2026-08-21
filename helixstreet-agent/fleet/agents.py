@@ -18,6 +18,7 @@ from .tools.compliance import screen_with_model_armor, scrub_pii
 from .tools.gcs import read_gcs_text, write_gcs_text
 from .tools.genomics import annotate_with_1000genomes, parse_vcf
 from .tools.memory import get_pipeline_state, save_digital_twin, update_pipeline_state
+from .tools.pharmacogenomics import match_pgx_variants, search_literature
 from .tools.variant_calling import get_batch_job_status, submit_deepvariant_job
 
 # New models ship with thin per-minute quotas; back off through the quota
@@ -81,8 +82,8 @@ A DeepVariant result VCF has landed; its gs:// URI and the user_id will be in
 the event description. Do the following:
 1. Check get_pipeline_state for the user to recover context from the Memory Bank.
 2. Parse the VCF with parse_vcf.
-3. Take the min and max positions of the returned variants and call
-   annotate_with_1000genomes once for that interval (same chromosome).
+3. Call annotate_with_1000genomes once: pick the chromosome carrying the most
+   variants and use the min and max positions of the variants on it.
 4. Record an audit event (action ANALYSIS_COMPLETE) with variant counts.
 Produce a structured analysis: number of calls, notable variants (high quality,
 non-reference genotypes), and how they compare to 1000 Genomes population
@@ -92,16 +93,40 @@ frame findings as research-grade annotations only.""",
     tools=[get_pipeline_state, parse_vcf, annotate_with_1000genomes, record_audit_event],
 )
 
+pharmacist_agent = Agent(
+    name="helixstreet_pharmacist",
+    model=GEMINI,
+    description="Screens called variants for CPIC drug-gene interactions with literature evidence.",
+    instruction="""You are the Pharmacogenomics Counselor agent of the Helixstreet fleet.
+The analyst has just examined a VCF whose gs:// URI and user_id appear earlier
+in the conversation. Your job:
+1. Call parse_vcf on that same VCF URI.
+2. Pass the returned variants list (as a JSON string) to match_pgx_variants.
+3. If there are matches: for the TWO most clinically significant gene-drug
+   pairs, call search_literature once each (query like
+   '<gene> <drug> pharmacogenomics') to attach recent peer-reviewed evidence.
+4. Record an audit event (action PGX_SCREEN_COMPLETE) with the match count.
+Report a concise medication-insights summary: per match, the gene, star
+allele, zygosity, predicted phenotype, affected drugs, CPIC guidance, and any
+literature citations (title, year, PMID). If there are NO matches, say so in
+one sentence (expected for BAM-derived VCFs, which carry no rsIDs) and skip
+literature search entirely. Frame everything as research-grade annotation —
+never prescribe, never advise dosing changes; always defer to clinicians.""",
+    tools=[parse_vcf, match_pgx_variants, search_literature, record_audit_event],
+)
+
 steward_agent = Agent(
     name="helixstreet_steward",
     model=GEMINI,
     description="Persists the digital twin to the Memory Bank and closes the audit trail.",
     instruction="""You are the Data Steward agent of the Helixstreet fleet.
-Take the analyst's findings from the conversation above and:
+Take the analyst's and pharmacist's findings from the conversation above and:
 1. Build a JSON digital-twin summary with keys: variants_called (int),
-   notable_variants (list), population_context (string), risk_notes (string,
+   notable_variants (list), population_context (string),
+   medication_insights (list of the pharmacist's matches with gene, phenotype,
+   drugs, guidance, citations — or an empty list if none), risk_notes (string,
    research-grade only), provenance (string mentioning DeepVariant + Cloud Batch
-   + 1000 Genomes).
+   + 1000 Genomes + CPIC reference where applicable).
 2. Call save_digital_twin with the user_id and that JSON as a string.
 3. Call update_pipeline_state with stage TWIN_SAVED.
 4. Record an audit event (action TWIN_SAVED).
@@ -117,6 +142,6 @@ ingest_pipeline = SequentialAgent(
 
 analysis_pipeline = SequentialAgent(
     name="helixstreet_analysis_fleet",
-    description="VCF analysis with population context, then twin persistence.",
-    sub_agents=[analyst_agent, steward_agent],
+    description="VCF analysis with population context and pharmacogenomic screening, then twin persistence.",
+    sub_agents=[analyst_agent, pharmacist_agent, steward_agent],
 )
