@@ -20,6 +20,7 @@ from .tools.genomics import annotate_with_1000genomes, parse_vcf
 from .tools.memory import get_pipeline_state, save_digital_twin, update_pipeline_state
 from .tools.pharmacogenomics import match_pgx_variants, search_literature
 from .tools.variant_calling import get_batch_job_status, submit_deepvariant_job
+from .tools.zkproof import commit_genome
 
 # New models ship with thin per-minute quotas; back off through the quota
 # window instead of failing the whole pipeline on a transient 429.
@@ -90,12 +91,16 @@ the event description. Do the following:
 3. Call annotate_with_1000genomes once: pick the chromosome carrying the most
    variants and use the min and max positions of the variants on it.
 4. Record an audit event (action ANALYSIS_COMPLETE) with variant counts.
+5. Call commit_genome with the user_id and the same VCF URI to seal a
+   per-variant commitment; note the returned commitment_root. This lets the
+   genome later prove single facts about itself without being revealed.
 Produce a structured analysis: number of calls, notable variants (high quality,
-non-reference genotypes), and how they compare to 1000 Genomes population
-allele frequencies (common vs. rare). Be precise and quantitative; the steward
-agent will persist your analysis. Never speculate about medical diagnoses —
-frame findings as research-grade annotations only.""",
-    tools=[get_pipeline_state, parse_vcf, annotate_with_1000genomes, record_audit_event],
+non-reference genotypes), how they compare to 1000 Genomes population allele
+frequencies (common vs. rare), and the commitment_root. Be precise and
+quantitative; the steward agent will persist your analysis. Never speculate
+about medical diagnoses — frame findings as research-grade annotations only.""",
+    tools=[get_pipeline_state, parse_vcf, annotate_with_1000genomes, commit_genome,
+           record_audit_event],
 )
 
 pharmacist_agent = Agent(
@@ -132,6 +137,8 @@ Take the analyst's and pharmacist's findings from the conversation above and:
    drugs, guidance, citations — or an empty list if none),
    genome_fingerprint (the sha256 of the analyzed VCF from parse_vcf output,
    plus the raw-genome checksums if the intake agent fingerprinted a BAM),
+   genome_commitment_root (the commitment_root the analyst reported, enabling
+   minimal-disclosure proofs about the sealed genome),
    risk_notes (string, research-grade only), provenance (string mentioning
    DeepVariant + Cloud Batch + 1000 Genomes + CPIC reference where applicable).
 2. Call save_digital_twin with the user_id and that JSON as a string.

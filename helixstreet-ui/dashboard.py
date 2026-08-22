@@ -13,6 +13,8 @@ import os
 import pandas as pd
 import streamlit as st
 
+import zkproof_core as zk
+
 PROJECT_ID = os.getenv("GOOGLE_CLOUD_PROJECT", "helixstreet-agent")
 DATA_BUCKET = os.getenv("DATA_BUCKET", f"{PROJECT_ID}-data")
 QUICKSTART_BUCKET = "deepvariant"
@@ -183,10 +185,11 @@ def kpi_row():
 
 kpi_row()
 
-tab_runs, tab_twins, tab_registry, tab_audit, tab_about = st.tabs(
+tab_runs, tab_twins, tab_proofs, tab_registry, tab_audit, tab_about = st.tabs(
     [
         ":material/monitor_heart: Pipeline runs",
         ":material/genetics: Digital twins",
+        ":material/lock: Private proofs",
         ":material/hub: Fleet registry",
         ":material/verified_user: Audit ledger",
         ":material/info: About",
@@ -283,6 +286,12 @@ with tab_twins:
                     f":material/fingerprint: **Genome fingerprint** (anchored in the "
                     f"audit ledger): `{fp_str[:100]}`"
                 )
+            root = data.get("genome_commitment_root")
+            if root:
+                st.caption(
+                    f":material/lock: **Sealed commitment root** — prove single facts "
+                    f"in the *Private proofs* tab: `{str(root)[:80]}`"
+                )
 
         insights = data.get("medication_insights") or []
         if insights:
@@ -318,6 +327,73 @@ with tab_twins:
             st.json(twin.get("twin", twin))
 
     twins_view()
+
+with tab_proofs:
+    st.caption(
+        "Every sealed genome carries a per-variant **Merkle commitment** (its root is "
+        "anchored in the audit ledger). That lets it answer single questions about "
+        "itself without being revealed. **Minimal disclosure**, not full zero-knowledge: "
+        "a proof reveals the one queried genotype and nothing else. Full ZK predicate "
+        "proofs and secure kinship are on the roadmap — see the About tab."
+    )
+    vaults = collection_dicts("genome_vault")
+    if not vaults:
+        st.info(
+            "No sealed genomes yet. Run any pipeline (the analyst seals a commitment), "
+            "or seed the synthetic kinship demo: `python scripts/seed_kinship_demo.py`."
+        )
+    else:
+        st.subheader("Prove one genotype — without revealing the genome")
+        vault_ids = [v["id"] for v in vaults]
+        who = st.selectbox("Sealed genome", vault_ids, key="disc_who")
+        vault = next(v for v in vaults if v["id"] == who)
+        records = vault.get("records", [])
+        keys = [r["key"] for r in records]
+        which = st.selectbox("Claim to prove (variant)", keys, key="disc_key")
+        if st.button("Generate & verify proof", icon=":material/verified:"):
+            disc = zk.make_disclosure(records, which)
+            ok = zk.verify_disclosure(disc) if disc else False
+            if ok:
+                st.success(
+                    f"✅ Verified against the anchored root — the relying party learns "
+                    f"only: **{disc['key']} = {disc['genotype']}**."
+                )
+                with st.container(horizontal=True):
+                    st.metric("Genotypes revealed", 1, border=True)
+                    st.metric("Genotypes kept hidden", disc["hidden_variants"], border=True)
+                    st.metric("Merkle path length", len(disc["path"]), border=True)
+                st.caption(f"Anchored commitment root: `{disc['root']}`")
+                st.caption(
+                    "The verifier checks the Merkle path against the public root only — "
+                    "it never sees the other genotypes (they appear solely as hashes)."
+                )
+            else:
+                st.error("Proof failed to verify.")
+
+        st.divider()
+        st.subheader("Prove a relationship — without revealing either genome")
+        c1, c2 = st.columns(2)
+        with c1:
+            a = st.selectbox("Genome A", vault_ids, key="kin_a")
+        with c2:
+            b = st.selectbox(
+                "Genome B", vault_ids, index=min(1, len(vault_ids) - 1), key="kin_b"
+            )
+        if st.button("Test relationship", icon=":material/family_restroom:"):
+            ra = next(v for v in vaults if v["id"] == a).get("records", [])
+            rb = next(v for v in vaults if v["id"] == b).get("records", [])
+            res = zk.kinship(ra, rb)
+            verdict = res["verdict"]
+            (st.success if "consistent" in verdict else st.warning)(f"**{verdict}**")
+            with st.container(horizontal=True):
+                st.metric("Shared markers", res["shared_markers"], border=True)
+                st.metric("Opposite-homozygote (IBS0)", res["ibs0_markers"], border=True)
+                st.metric("Concordant genotypes", res["concordant_genotypes"], border=True)
+            st.caption(
+                "Only these aggregate counts are produced — neither genome's genotypes "
+                "are displayed or published. A production system would run this as secure "
+                "multi-party computation so even the fleet learns nothing beyond the verdict."
+            )
 
 with tab_registry:
     cards = collection_dicts("agent_registry")
