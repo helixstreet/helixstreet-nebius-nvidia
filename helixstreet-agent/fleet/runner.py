@@ -43,11 +43,23 @@ async def run_pipeline(pipeline_agent, user_id: str, prompt: str) -> str:
     ):
         author = getattr(event, "author", "unknown")
         for call in event.get_function_calls() or []:
-            entry = {"t": _now(), "agent": author, "type": "tool_call", "tool": call.name}
+            entry = {
+                "t": _now(),
+                "agent": author,
+                "type": "tool_call",
+                "tool": call.name,
+                "args": json.dumps(dict(call.args or {}), default=str)[:500],
+            }
             log.info(json.dumps({"pipeline": pipeline_agent.name, **entry}))
             append_trace(user_id, entry)
         for resp in event.get_function_responses() or []:
-            entry = {"t": _now(), "agent": author, "type": "tool_result", "tool": resp.name}
+            entry = {
+                "t": _now(),
+                "agent": author,
+                "type": "tool_result",
+                "tool": resp.name,
+                "result": json.dumps(resp.response, default=str)[:800],
+            }
             log.info(json.dumps({"pipeline": pipeline_agent.name, **entry}))
             append_trace(user_id, entry)
         if event.content and event.content.parts:

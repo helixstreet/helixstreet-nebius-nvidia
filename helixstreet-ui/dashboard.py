@@ -227,7 +227,11 @@ with tab_runs:
             )
 
         selected = st.selectbox("Reasoning trace for", [s["id"] for s in states])
-        trace = next((s.get("trace", []) for s in states if s["id"] == selected), [])
+        sel_state = next((s for s in states if s["id"] == selected), {})
+        st.markdown(
+            f"**Stage:** `{sel_state.get('stage', '?')}` — {sel_state.get('details', '')}"
+        )
+        trace = sel_state.get("trace", [])
         if not trace:
             st.caption("No trace entries yet.")
         for entry in trace[-40:]:
@@ -235,8 +239,16 @@ with tab_runs:
                 entry.get("type"), "•"
             )
             label = f"{icon} `{entry.get('agent')}` — {entry.get('type')}"
+            payload = entry.get("args") or entry.get("result")
             if entry.get("tool"):
-                st.markdown(f"{label}: **{entry['tool']}**  \n:gray[{entry.get('t','')}]")
+                if payload:
+                    with st.expander(f"{label}: {entry['tool']} · {entry.get('t','')}"):
+                        try:
+                            st.json(json.loads(payload))
+                        except (json.JSONDecodeError, TypeError):
+                            st.code(payload)
+                else:  # entries recorded before args/results were captured
+                    st.markdown(f"{label}: **{entry['tool']}**  \n:gray[{entry.get('t','')}]")
             else:
                 with st.expander(f"{label} · {entry.get('t','')}"):
                     st.write(entry.get("text", ""))
