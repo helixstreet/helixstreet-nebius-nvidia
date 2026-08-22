@@ -276,6 +276,13 @@ with tab_twins:
                 )
             if data.get("population_context"):
                 st.markdown(f"**Population context:** {data['population_context']}")
+            fp = data.get("genome_fingerprint")
+            if fp:
+                fp_str = fp if isinstance(fp, str) else json.dumps(fp)
+                st.caption(
+                    f":material/fingerprint: **Genome fingerprint** (anchored in the "
+                    f"audit ledger): `{fp_str[:100]}`"
+                )
 
         insights = data.get("medication_insights") or []
         if insights:

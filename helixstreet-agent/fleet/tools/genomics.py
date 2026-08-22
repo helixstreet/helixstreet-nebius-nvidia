@@ -19,11 +19,16 @@ def parse_vcf(vcf_gcs_uri: str) -> dict:
     Returns:
         Call statistics and a capped list of PASS variants with genotypes.
     """
+    import hashlib
+
     bucket, _, name = vcf_gcs_uri[5:].partition("/")
     raw = clients.storage().bucket(bucket).blob(name).download_as_bytes()
+    sha256 = hashlib.sha256(raw).hexdigest()  # fingerprint of the stored artifact
     if name.endswith(".gz"):
         raw = gzip.decompress(raw)
-    return summarize_vcf_text(raw.decode("utf-8", errors="replace"), vcf_gcs_uri)
+    summary = summarize_vcf_text(raw.decode("utf-8", errors="replace"), vcf_gcs_uri)
+    summary["sha256"] = sha256
+    return summary
 
 
 def summarize_vcf_text(text: str, source: str) -> dict:

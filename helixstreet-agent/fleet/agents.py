@@ -15,7 +15,7 @@ from google.genai import types as genai_types
 from . import config
 from .tools.audit import record_audit_event
 from .tools.compliance import screen_with_model_armor, scrub_pii
-from .tools.gcs import read_gcs_text, write_gcs_text
+from .tools.gcs import fingerprint_gcs_object, read_gcs_text, write_gcs_text
 from .tools.genomics import annotate_with_1000genomes, parse_vcf
 from .tools.memory import get_pipeline_state, save_digital_twin, update_pipeline_state
 from .tools.pharmacogenomics import match_pgx_variants, search_literature
@@ -50,10 +50,15 @@ Do ALL of the following, in order, using your tools:
 4. Write the redacted manifest back with write_gcs_text, to the same path with
    suffix '.scrubbed.json' instead of '.json'.
 5. Record an audit event (action PII_SCRUBBED) naming the engine used.
+6. Fingerprint the raw genome with fingerprint_gcs_object on the BAM URI, then
+   record an audit event (action GENOME_FINGERPRINTED) containing the checksums.
+   This anchors the genome's identity in the tamper-evident ledger so every
+   future insight can prove which exact molecule-readout it derives from.
 If the manifest is missing, note that, audit it (action MANIFEST_MISSING), and continue.
 Finish with a one-paragraph handoff summary for the variant-calling agent,
 repeating the user_id and the BAM gs:// URI exactly as given to you.""",
-    tools=[read_gcs_text, screen_with_model_armor, scrub_pii, write_gcs_text, record_audit_event],
+    tools=[read_gcs_text, screen_with_model_armor, scrub_pii, write_gcs_text,
+           fingerprint_gcs_object, record_audit_event],
 )
 
 variant_caller_agent = Agent(
@@ -124,9 +129,11 @@ Take the analyst's and pharmacist's findings from the conversation above and:
 1. Build a JSON digital-twin summary with keys: variants_called (int),
    notable_variants (list), population_context (string),
    medication_insights (list of the pharmacist's matches with gene, phenotype,
-   drugs, guidance, citations — or an empty list if none), risk_notes (string,
-   research-grade only), provenance (string mentioning DeepVariant + Cloud Batch
-   + 1000 Genomes + CPIC reference where applicable).
+   drugs, guidance, citations — or an empty list if none),
+   genome_fingerprint (the sha256 of the analyzed VCF from parse_vcf output,
+   plus the raw-genome checksums if the intake agent fingerprinted a BAM),
+   risk_notes (string, research-grade only), provenance (string mentioning
+   DeepVariant + Cloud Batch + 1000 Genomes + CPIC reference where applicable).
 2. Call save_digital_twin with the user_id and that JSON as a string.
 3. Call update_pipeline_state with stage TWIN_SAVED.
 4. Record an audit event (action TWIN_SAVED).

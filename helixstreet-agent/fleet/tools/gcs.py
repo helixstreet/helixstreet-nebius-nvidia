@@ -21,6 +21,35 @@ def read_gcs_text(gcs_uri: str) -> str:
     return blob.download_as_text()[:20000]
 
 
+def fingerprint_gcs_object(gcs_uri: str) -> dict:
+    """Computes a tamper-evident fingerprint of a genomic file in Cloud Storage.
+
+    Returns the object's size, generation, and server-side CRC32C/MD5 checksums
+    (available at any scale without downloading), plus a full SHA-256 of the
+    content for objects under 100 MB. Anchoring this in the audit ledger lets
+    any future analysis prove it derives from this exact genome.
+
+    Args:
+        gcs_uri: Full gs:// URI of the object to fingerprint.
+    """
+    import hashlib
+
+    bucket, name = _split(gcs_uri)
+    blob = clients.storage().bucket(bucket).get_blob(name)
+    if blob is None:
+        return {"error": f"{gcs_uri} does not exist."}
+    out = {
+        "object": gcs_uri,
+        "size_bytes": blob.size,
+        "generation": blob.generation,
+        "crc32c": blob.crc32c,
+        "md5": blob.md5_hash,
+    }
+    if blob.size is not None and blob.size < 100 * 1024 * 1024:
+        out["sha256"] = hashlib.sha256(blob.download_as_bytes()).hexdigest()
+    return out
+
+
 def write_gcs_text(gcs_uri: str, content: str) -> str:
     """Writes text content (e.g. a scrubbed manifest) to Cloud Storage.
 
