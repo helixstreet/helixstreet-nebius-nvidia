@@ -57,3 +57,6 @@ Thumbs.db
 # Project specific
 .agents/
 .claude/
+
+# Local voiceover takes (keep out of the repo)
+docs/*.mp3
