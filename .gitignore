@@ -62,3 +62,4 @@ Thumbs.db
 docs/*.mp3
 *.mp4
 *.wav
+docs/video-*.md
