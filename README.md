@@ -65,13 +65,13 @@ gaps between the two halves — the same mechanism would carry week-long jobs.
 
 ## The fleet (Agent Registry)
 
-| Agent | Pipeline | What it does | Key tools |
+| Agent | Pipeline | Action | Tools |
 |---|---|---|---|
-| `helixstreet_intake` | ingest | Screens uploads with Model Armor, de-identifies manifests with **Cloud DLP** | `scrub_pii`, `screen_with_model_armor` |
-| `helixstreet_variant_caller` | ingest | Dispatches **DeepVariant** as an async **Cloud Batch** job, checkpoints state | `submit_deepvariant_job` |
-| `helixstreet_analyst` | analysis | Parses the VCF, queries **1000 Genomes** in BigQuery for population allele frequencies | `parse_vcf`, `annotate_with_1000genomes` |
-| `helixstreet_pharmacist` | analysis | Screens variants against a curated **CPIC** drug-gene reference; attaches **Europe PMC** literature evidence | `match_pgx_variants`, `search_literature` |
-| `helixstreet_steward` | analysis | Persists the digital twin, closes the hash-chained audit trail | `save_digital_twin`, `record_audit_event` |
+| `helixstreet_intake` | ingest | **(Gemma 3)** Screens uploads with Model Armor, de-identifies manifests with **Cloud DLP** | `scrub_pii`, `screen_with_model_armor` |
+| `helixstreet_variant_caller` | ingest | **(Gemini)** Dispatches **DeepVariant** as an async **Cloud Batch** job, checkpoints state | `submit_deepvariant_job` |
+| `helixstreet_analyst` | analysis | **(Gemini)** Parses the VCF, queries **1000 Genomes** in BigQuery for population allele frequencies | `parse_vcf`, `annotate_with_1000genomes` |
+| `helixstreet_pharmacist` | analysis | **(Gemini)** Screens variants against a curated **CPIC** drug-gene reference; attaches **Europe PMC** literature evidence | `match_pgx_variants`, `search_literature` |
+| `helixstreet_steward` | analysis | **(Gemini)** Persists the digital twin, closes the hash-chained audit trail | `save_digital_twin`, `record_audit_event` |
 
 Routing between pipelines is deterministic (Eventarc events → regex router); execution
 *within* each stage is agentic — Gemini decides tool order, handles missing manifests,
@@ -125,10 +125,10 @@ claim, was redelivered by Eventarc minutes later, and completed — zero human t
 
 ## Hackathon requirements
 
-- **Gemini 3.5 Flash via Vertex AI** — `GEMINI_MODEL=gemini-3.5-flash`, `GOOGLE_GENAI_USE_VERTEXAI=TRUE`
+- **Hybrid Agent Architecture** — `helixstreet_intake` runs on **Gemma 3 (27B)** for high-throughput gatekeeping, while complex reasoning agents run on **Gemini 3.5 Flash via Vertex AI**.
 - **Google Agent Framework** — [Agent Development Kit (ADK)](https://google.github.io/adk-docs/): `Agent`, `SequentialAgent`, `Runner`
 - **Google Cloud infrastructure** — Cloud Run, Cloud Batch, Eventarc, Cloud Storage, Firestore, BigQuery, Cloud DLP, Cloud Logging
-- **Google AI models** — Gemini 3.5 Flash + **DeepVariant** (Google's deep-learning variant caller)
+- **Google AI models** — Gemini 3.5 Flash, Gemma 3, and **DeepVariant** (Google's deep-learning variant caller)
 
 ## Spin-up (one command)
 
