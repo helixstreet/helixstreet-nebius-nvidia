@@ -60,3 +60,5 @@ Thumbs.db
 
 # Local voiceover takes (keep out of the repo)
 docs/*.mp3
+*.mp4
+*.wav

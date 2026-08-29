@@ -10,6 +10,7 @@ Firestore Memory Bank.
 """
 from google.adk.agents import Agent, SequentialAgent
 from google.adk.models.google_llm import Gemini
+from google.adk.models import Gemma
 from google.genai import types as genai_types
 
 from . import config
@@ -35,9 +36,20 @@ GEMINI = Gemini(
     ),
 )
 
+GEMMA = Gemma(
+    model="gemma-3-27b-it",
+    retry_options=genai_types.HttpRetryOptions(
+        attempts=5,
+        initial_delay=15,
+        max_delay=120,
+        exp_base=2,
+        http_status_codes=[429, 500, 503, 504],
+    ),
+)
+
 intake_agent = Agent(
     name="helixstreet_intake",
-    model=GEMINI,
+    model=GEMMA,
     description="Compliance gatekeeper: screens and de-identifies incoming data.",
     instruction="""You are the Intake & Compliance agent of the Helixstreet fleet.
 A new genomic sample upload event will be described to you, including the GCS
