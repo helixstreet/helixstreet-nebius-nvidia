@@ -17,7 +17,7 @@ AGENT_CARDS = [
         "version": "1.1.0",
         "pipeline": "ingest",
         "description": "Compliance gatekeeper: Model Armor screening + Cloud DLP de-identification. "
-                       "Runs on Gemma 3 (hybrid model tier) for high-throughput screening.",
+                       "Runs on Gemma 4 (hybrid model tier) for high-throughput screening.",
         "capabilities": ["model-armor-screening", "dlp-redaction", "audit-logging",
                          "gemma-hybrid-tier"],
         "required_roles": ["roles/dlp.user", "roles/storage.objectAdmin"],

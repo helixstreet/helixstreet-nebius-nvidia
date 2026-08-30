@@ -26,9 +26,9 @@ flowchart LR
         GCS[(Cloud Storage\ndata bucket)]
         EA[Eventarc\nobject.finalized]
     end
-    subgraph Fleet["helixstreet-fleet · Cloud Run · ADK — hybrid model tier: Gemma 3 gatekeeper + Gemini 3.5 Flash (Vertex AI) reasoning"]
+    subgraph Fleet["helixstreet-fleet · Cloud Run · ADK — hybrid model tier: Gemma 4 gatekeeper + Gemini 3.5 Flash (Vertex AI) reasoning"]
         R{deterministic\nevent router}
-        A1[helixstreet_intake · Gemma 3 27B\nModel Armor + Cloud DLP + fingerprint]
+        A1[helixstreet_intake · Gemma 4 31B\nModel Armor + Cloud DLP + fingerprint]
         A2[helixstreet_variant_caller · Gemini\nDeepVariant dispatch]
         A3[helixstreet_analyst · Gemini\nVCF + 1000 Genomes + commitment]
         A5[helixstreet_pharmacist · Gemini\nCPIC drug-gene + literature]
@@ -69,7 +69,7 @@ gaps between the two halves — the same mechanism would carry week-long jobs.
 
 | Agent | Pipeline | Action | Tools |
 |---|---|---|---|
-| `helixstreet_intake` | ingest | **(Gemma 3)** Screens uploads with Model Armor, de-identifies manifests with **Cloud DLP** | `scrub_pii`, `screen_with_model_armor` |
+| `helixstreet_intake` | ingest | **(Gemma 4)** Screens uploads with Model Armor, de-identifies manifests with **Cloud DLP** | `scrub_pii`, `screen_with_model_armor` |
 | `helixstreet_variant_caller` | ingest | **(Gemini)** Dispatches **DeepVariant** as an async **Cloud Batch** job, checkpoints state | `submit_deepvariant_job` |
 | `helixstreet_analyst` | analysis | **(Gemini)** Parses the VCF, queries **1000 Genomes** in BigQuery for population allele frequencies | `parse_vcf`, `annotate_with_1000genomes` |
 | `helixstreet_pharmacist` | analysis | **(Gemini)** Screens variants against a curated **CPIC** drug-gene reference; attaches **Europe PMC** literature evidence | `match_pgx_variants`, `search_literature` |
@@ -128,10 +128,10 @@ claim, was redelivered by Eventarc minutes later, and completed — zero human t
 ## Hackathon requirements
 
 - **Gemini 3.5 Flash via Vertex AI** (required tech) — all four reasoning agents; `GOOGLE_GENAI_USE_VERTEXAI=TRUE`, global endpoint
-- **Hybrid model tier (bonus: Gemma)** — `helixstreet_intake` runs on **Gemma 3 27B** via ADK's `Gemma` class (Gemini API backend, key in **Secret Manager**; auto-fallback to Gemini if the secret is absent). Right-sizing rationale: the gatekeeper is a high-volume, well-scoped screening task — exactly where a small open model beats a frontier model on cost per sample at population scale. Note: Gemma 3 has no native function calling; ADK injects tool schemas into prompts and parses calls from text
-- **Google Agent Framework** — [Agent Development Kit (ADK)](https://google.github.io/adk-docs/): `Agent`, `SequentialAgent`, `Runner`, `Gemma`
+- **Hybrid model tier (bonus: Gemma)** — `helixstreet_intake` runs on **Gemma 4 31B** on the Gemini API backend (native function calling; key in **Secret Manager**; auto-fallback to Gemini if the secret is absent). Right-sizing rationale: the gatekeeper is a high-volume, well-scoped screening task — exactly where a small open model beats a frontier model on cost per sample at population scale. Discovered en route: gemma-3-* is retired from the API — the 404 in our logs is the receipt
+- **Google Agent Framework** — [Agent Development Kit (ADK)](https://google.github.io/adk-docs/): `Agent`, `SequentialAgent`, `Runner`
 - **Google Cloud infrastructure** — Cloud Run, Cloud Batch, Eventarc, Cloud Storage, Firestore, BigQuery, Cloud DLP, Secret Manager, Cloud Logging
-- **Google AI models** — Gemini 3.5 Flash, **Gemma 3**, and **DeepVariant** (Google's deep-learning variant caller)
+- **Google AI models** — Gemini 3.5 Flash, **Gemma 4**, and **DeepVariant** (Google's deep-learning variant caller)
 
 ## Spin-up (one command)
 

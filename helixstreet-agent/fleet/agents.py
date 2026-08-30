@@ -5,14 +5,15 @@ Analysis pipeline (fires on VCF arrival): analyst -> pharmacist -> steward
 
 Routing between pipelines is deterministic (Eventarc events), execution within
 each stage is agentic. Hybrid model tier: the intake gatekeeper runs on
-Gemma 3 (high-throughput screening; served via the Gemini API, tools injected
-by ADK's prompt-based function calling); the reasoning agents run on Gemini
+Gemma 4 (high-throughput screening; served via the Gemini API with native
+function calling); the reasoning agents run on Gemini
 3.5 Flash via Vertex AI. The async gap between the two pipelines — while
 DeepVariant runs on Cloud Batch — is bridged by the Firestore Memory Bank.
 """
+import os
+
 from google.adk.agents import Agent, SequentialAgent
 from google.adk.models.google_llm import Gemini
-from google.adk.models import Gemma
 from google.genai import types as genai_types
 
 from . import config
@@ -38,8 +39,11 @@ GEMINI = Gemini(
     ),
 )
 
-GEMMA = Gemma(
+# Gemma 4 has native function calling, so the standard Gemini class works —
+# with the client forced onto the Gemini API backend (Gemma is not on Vertex).
+GEMMA = Gemini(
     model=config.GEMMA_MODEL,
+    client_kwargs={"vertexai": False, "api_key": os.getenv("GOOGLE_API_KEY")},
     retry_options=genai_types.HttpRetryOptions(
         attempts=5,
         initial_delay=15,
@@ -49,8 +53,8 @@ GEMMA = Gemma(
     ),
 )
 
-# ADK's Gemma backend is the Gemini API and requires GOOGLE_API_KEY; if the
-# secret isn't mounted, degrade to Gemini rather than crash the gatekeeper.
+# Gemma needs GOOGLE_API_KEY (Secret Manager); if the secret isn't mounted,
+# degrade to Gemini rather than crash the gatekeeper.
 INTAKE_MODEL = GEMMA if config.GEMMA_ENABLED else GEMINI
 
 intake_agent = Agent(

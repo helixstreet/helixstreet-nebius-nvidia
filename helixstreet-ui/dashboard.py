@@ -423,7 +423,7 @@ with tab_about:
             "annotation against **1000 Genomes** in BigQuery, **CPIC** drug-gene "
             "screening with live literature, and a tamper-evident digital twin — "
             "with no human in the loop. Built with Google ADK on Gemini 3.5 Flash "
-            "with a Gemma 3 intake tier, for the All Things Agentic Hackathon."
+            "with a Gemma 4 intake tier, for the All Things Agentic Hackathon."
         )
         st.caption(
             "All demo data is public and consented (NA12878 / Genome in a Bottle, "
