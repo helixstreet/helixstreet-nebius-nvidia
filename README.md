@@ -26,13 +26,13 @@ flowchart LR
         GCS[(Cloud Storage\ndata bucket)]
         EA[Eventarc\nobject.finalized]
     end
-    subgraph Fleet["helixstreet-fleet · Cloud Run · ADK + Gemini 3.5 Flash (Vertex AI)"]
+    subgraph Fleet["helixstreet-fleet · Cloud Run · ADK — hybrid model tier: Gemma 3 gatekeeper + Gemini 3.5 Flash (Vertex AI) reasoning"]
         R{deterministic\nevent router}
-        A1[helixstreet_intake\nModel Armor + Cloud DLP]
-        A2[helixstreet_variant_caller\nDeepVariant dispatch]
-        A3[helixstreet_analyst\nVCF + 1000 Genomes]
-        A5[helixstreet_pharmacist\nCPIC drug-gene + literature]
-        A4[helixstreet_steward\ntwin + audit]
+        A1[helixstreet_intake · Gemma 3 27B\nModel Armor + Cloud DLP + fingerprint]
+        A2[helixstreet_variant_caller · Gemini\nDeepVariant dispatch]
+        A3[helixstreet_analyst · Gemini\nVCF + 1000 Genomes + commitment]
+        A5[helixstreet_pharmacist · Gemini\nCPIC drug-gene + literature]
+        A4[helixstreet_steward · Gemini\ntwin + audit]
     end
     subgraph Compute
         B[Cloud Batch\ngoogle/deepvariant]
@@ -41,6 +41,7 @@ flowchart LR
         MB[(Memory Bank\ndigital_twins, pipeline_state)]
         REG[(Agent Registry)]
         AUD[(Hash-chained\naudit ledger)]
+        VLT[(Genome vault\nMerkle commitments)]
     end
     BQ[(BigQuery public data\n1000 Genomes Phase 3)]
 
@@ -53,9 +54,10 @@ flowchart LR
     A2 <--> MB
     A3 --> BQ
     A5 --> EPMC[(Europe PMC\nliterature API)]
+    A3 -- seal commitment --> VLT
     A4 --> MB
     A1 & A2 & A3 & A5 & A4 --> AUD
-    UI -. live reads .-> MB & REG & AUD
+    UI -. live reads + private proofs .-> MB & REG & AUD & VLT
 ```
 
 **The async centerpiece:** the ingest pipeline dispatches DeepVariant and *ends its turn*.
@@ -125,10 +127,11 @@ claim, was redelivered by Eventarc minutes later, and completed — zero human t
 
 ## Hackathon requirements
 
-- **Hybrid Agent Architecture** — `helixstreet_intake` runs on **Gemma 3 (27B)** for high-throughput gatekeeping, while complex reasoning agents run on **Gemini 3.5 Flash via Vertex AI**.
-- **Google Agent Framework** — [Agent Development Kit (ADK)](https://google.github.io/adk-docs/): `Agent`, `SequentialAgent`, `Runner`
-- **Google Cloud infrastructure** — Cloud Run, Cloud Batch, Eventarc, Cloud Storage, Firestore, BigQuery, Cloud DLP, Cloud Logging
-- **Google AI models** — Gemini 3.5 Flash, Gemma 3, and **DeepVariant** (Google's deep-learning variant caller)
+- **Gemini 3.5 Flash via Vertex AI** (required tech) — all four reasoning agents; `GOOGLE_GENAI_USE_VERTEXAI=TRUE`, global endpoint
+- **Hybrid model tier (bonus: Gemma)** — `helixstreet_intake` runs on **Gemma 3 27B** via ADK's `Gemma` class (Gemini API backend, key in **Secret Manager**; auto-fallback to Gemini if the secret is absent). Right-sizing rationale: the gatekeeper is a high-volume, well-scoped screening task — exactly where a small open model beats a frontier model on cost per sample at population scale. Note: Gemma 3 has no native function calling; ADK injects tool schemas into prompts and parses calls from text
+- **Google Agent Framework** — [Agent Development Kit (ADK)](https://google.github.io/adk-docs/): `Agent`, `SequentialAgent`, `Runner`, `Gemma`
+- **Google Cloud infrastructure** — Cloud Run, Cloud Batch, Eventarc, Cloud Storage, Firestore, BigQuery, Cloud DLP, Secret Manager, Cloud Logging
+- **Google AI models** — Gemini 3.5 Flash, **Gemma 3**, and **DeepVariant** (Google's deep-learning variant caller)
 
 ## Spin-up (one command)
 

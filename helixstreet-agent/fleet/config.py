@@ -11,6 +11,13 @@ LOCATION = os.getenv("BATCH_LOCATION", "us-central1")
 # Hackathon requirement: Gemini 3.5 or newer, served through Vertex AI.
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-3.5-flash")
 
+# Hybrid tier: the high-throughput intake gatekeeper runs on Gemma 3.
+# ADK's Gemma class serves ONLY via the Gemini API (not Vertex), so it needs
+# GOOGLE_API_KEY (mounted from Secret Manager). Without a key we fall back to
+# Gemini so a missing secret can never take the fleet down.
+GEMMA_MODEL = os.getenv("GEMMA_MODEL", "gemma-3-27b-it")
+GEMMA_ENABLED = bool(os.getenv("GOOGLE_API_KEY"))
+
 # Data plane
 DATA_BUCKET = os.getenv("DATA_BUCKET", f"{PROJECT_ID}-data")
 

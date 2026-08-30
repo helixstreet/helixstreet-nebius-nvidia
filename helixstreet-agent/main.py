@@ -66,7 +66,12 @@ def startup():
 
 @app.get("/healthz")
 def healthz():
-    return {"status": "ok", "model": config.GEMINI_MODEL}
+    return {
+        "status": "ok",
+        "reasoning_model": config.GEMINI_MODEL,
+        "intake_model": config.GEMMA_MODEL if config.GEMMA_ENABLED else config.GEMINI_MODEL,
+        "gemma_hybrid_tier": config.GEMMA_ENABLED,
+    }
 
 
 def _parse_gcs_event(body: dict) -> tuple[str, str, str]:

@@ -7,13 +7,19 @@ import datetime
 
 from . import clients, config
 
+def _intake_model() -> str:
+    return config.GEMMA_MODEL if config.GEMMA_ENABLED else config.GEMINI_MODEL
+
+
 AGENT_CARDS = [
     {
         "name": "helixstreet_intake",
-        "version": "1.0.0",
+        "version": "1.1.0",
         "pipeline": "ingest",
-        "description": "Compliance gatekeeper: Model Armor screening + Cloud DLP de-identification.",
-        "capabilities": ["model-armor-screening", "dlp-redaction", "audit-logging"],
+        "description": "Compliance gatekeeper: Model Armor screening + Cloud DLP de-identification. "
+                       "Runs on Gemma 3 (hybrid model tier) for high-throughput screening.",
+        "capabilities": ["model-armor-screening", "dlp-redaction", "audit-logging",
+                         "gemma-hybrid-tier"],
         "required_roles": ["roles/dlp.user", "roles/storage.objectAdmin"],
     },
     {
@@ -56,7 +62,10 @@ def publish_registry() -> int:
     db = clients.firestore()
     now = datetime.datetime.now(datetime.timezone.utc)
     for card in AGENT_CARDS:
+        model = (
+            _intake_model() if card["name"] == "helixstreet_intake" else config.GEMINI_MODEL
+        )
         db.collection(config.COLL_REGISTRY).document(card["name"]).set(
-            {**card, "model": config.GEMINI_MODEL, "published": now}, merge=True
+            {**card, "model": model, "published": now}, merge=True
         )
     return len(AGENT_CARDS)

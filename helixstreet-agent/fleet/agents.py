@@ -1,12 +1,14 @@
-"""The Helixstreet fleet: four ADK agents in two event-driven pipelines.
+"""The Helixstreet fleet: five ADK agents in two event-driven pipelines.
 
 Ingest pipeline  (fires on BAM upload):   intake -> variant_caller
-Analysis pipeline (fires on VCF arrival): analyst -> steward
+Analysis pipeline (fires on VCF arrival): analyst -> pharmacist -> steward
 
 Routing between pipelines is deterministic (Eventarc events), execution within
-each stage is agentic (Gemini decides tool calls). The async gap between the
-two pipelines — while DeepVariant runs on Cloud Batch — is bridged by the
-Firestore Memory Bank.
+each stage is agentic. Hybrid model tier: the intake gatekeeper runs on
+Gemma 3 (high-throughput screening; served via the Gemini API, tools injected
+by ADK's prompt-based function calling); the reasoning agents run on Gemini
+3.5 Flash via Vertex AI. The async gap between the two pipelines — while
+DeepVariant runs on Cloud Batch — is bridged by the Firestore Memory Bank.
 """
 from google.adk.agents import Agent, SequentialAgent
 from google.adk.models.google_llm import Gemini
@@ -37,7 +39,7 @@ GEMINI = Gemini(
 )
 
 GEMMA = Gemma(
-    model="gemma-3-27b-it",
+    model=config.GEMMA_MODEL,
     retry_options=genai_types.HttpRetryOptions(
         attempts=5,
         initial_delay=15,
@@ -47,9 +49,13 @@ GEMMA = Gemma(
     ),
 )
 
+# ADK's Gemma backend is the Gemini API and requires GOOGLE_API_KEY; if the
+# secret isn't mounted, degrade to Gemini rather than crash the gatekeeper.
+INTAKE_MODEL = GEMMA if config.GEMMA_ENABLED else GEMINI
+
 intake_agent = Agent(
     name="helixstreet_intake",
-    model=GEMMA,
+    model=INTAKE_MODEL,
     description="Compliance gatekeeper: screens and de-identifies incoming data.",
     instruction="""You are the Intake & Compliance agent of the Helixstreet fleet.
 A new genomic sample upload event will be described to you, including the GCS

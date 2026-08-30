@@ -70,6 +70,20 @@ gcloud iam service-accounts add-iam-policy-binding "$BATCH_SA_EMAIL" \
   --project "$PROJECT_ID" --member "serviceAccount:${FLEET_SA_EMAIL}" \
   --role roles/iam.serviceAccountUser --quiet >/dev/null
 
+# Hybrid model tier: intake runs on Gemma 3 via the Gemini API, which needs an
+# API key. Create it once (https://aistudio.google.com/apikey), then:
+#   printf '%s' "$YOUR_KEY" | gcloud secrets create gemma-api-key --data-file=-
+#   gcloud secrets add-iam-policy-binding gemma-api-key \
+#     --member "serviceAccount:${FLEET_SA_EMAIL}" --role roles/secretmanager.secretAccessor
+# The deploy auto-detects the secret; without it, intake falls back to Gemini.
+GEMMA_SECRET_ARGS=()
+if gcloud secrets describe gemma-api-key --project "$PROJECT_ID" >/dev/null 2>&1; then
+  GEMMA_SECRET_ARGS=(--update-secrets "GOOGLE_API_KEY=gemma-api-key:latest")
+  echo "==> Gemma hybrid tier: gemma-api-key secret found, mounting"
+else
+  echo "==> Gemma hybrid tier: no gemma-api-key secret; intake will use Gemini"
+fi
+
 echo "==> Deploying fleet service (Cloud Run)"
 gcloud run deploy helixstreet-fleet \
   --project "$PROJECT_ID" --region "$REGION" \
@@ -77,6 +91,7 @@ gcloud run deploy helixstreet-fleet \
   --service-account "$FLEET_SA_EMAIL" \
   --no-allow-unauthenticated \
   --memory 1Gi --timeout 900 --max-instances 3 --concurrency 1 \
+  "${GEMMA_SECRET_ARGS[@]}" \
   --set-env-vars "GOOGLE_GENAI_USE_VERTEXAI=TRUE,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=global,BATCH_LOCATION=${REGION},DATA_BUCKET=${DATA_BUCKET},GEMINI_MODEL=${GEMINI_MODEL},BATCH_SERVICE_ACCOUNT=${BATCH_SA_EMAIL},MODEL_ARMOR_TEMPLATE=${MODEL_ARMOR_TEMPLATE:-}"
 
 # Optional inline guardrails: create the Model Armor template once with
