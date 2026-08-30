@@ -207,7 +207,7 @@ research-grade annotations, never medical diagnoses.
 ```
 helixstreet-agent/     Fleet service (FastAPI + ADK), Cloud Run
   main.py              Eventarc router + idempotency
-  fleet/agents.py      The four agents / two pipelines
+  fleet/agents.py      The five agents / two pipelines
   fleet/tools/         DLP, Model Armor, DeepVariant/Batch, VCF, BigQuery, memory, audit
 helixstreet-ui/        Streamlit fleet command center, Cloud Run
 infra/deploy.sh        One-shot idempotent GCP deployment (APIs, IAM, services, trigger)
