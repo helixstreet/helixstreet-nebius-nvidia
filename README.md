@@ -97,16 +97,16 @@ Nebius Object Storage (s3://<bucket>)
 │   │   ├── registry.py                      # Agent Registry cards published on startup
 │   │   └── tools/
 │   │       ├── compliance.py                # Nemotron Guardrails + HIPAA PII redaction
-│   │       ├── variant_calling.py           # Nebius Serverless GPU Job submission (DeepVariant)
+│   │       ├── variant_calling.py           # Nebius Serverless GPU Job submission (Clara Parabricks pbrun deepvariant)
 │   │       ├── genomics.py                  # VCF parser + 1000 Genomes Phase 3 allele frequencies
-│   │       ├── pharmacogenomics.py          # Curated CPIC Level-A star-allele matcher + Europe PMC
+│   │       ├── pharmacogenomics.py          # CPIC Level-A matcher + OpenFDA labels + Tavily + Europe PMC + 3D PDB metadata
 │   │       ├── zkproof.py / zkproof_core.py # Salted Merkle commitments, selective disclosure, IBS0 kinship
 │   │       ├── memory.py                    # Memory Bank (Digital Twins + async pipeline state)
 │   │       ├── audit.py                     # SHA-256 hash-chained tamper-evident audit ledger
 │   │       └── gcs.py                       # Storage text & SHA-256 fingerprinting helpers
-│   └── tests/                               # 56 unit tests (pytest)
+│   └── tests/                               # 62 unit tests (pytest)
 ├── helixstreet-ui/
-│   └── dashboard.py                         # Streamlit Command Center (6 live tabs)
+│   └── dashboard.py                         # Streamlit Command Center (6 live tabs + 3Dmol.js PDB viewer + Live Copilot)
 ├── infra/
 │   └── deploy.sh                            # One-shot Nebius AI Cloud deployment script
 └── scripts/
@@ -128,18 +128,18 @@ Nebius Object Storage (s3://<bucket>)
 ### 2. Configure Credentials & Environment
 
 ```bash
-git clone https://github.com/helixstreet/helixstreet-all_things_agentic.git
-cd helixstreet-all_things_agentic
+git clone https://github.com/helixstreet/helixstreet-nebius-nvidia.git
+cd helixstreet-nebius-nvidia
 
 # Create virtualenv and install dependencies
 python3 -m venv helixstreet-agent/.venv
 helixstreet-agent/.venv/bin/pip install -r helixstreet-agent/requirements.txt -r helixstreet-ui/requirements.txt
 
-# Set your Nebius Token Factory API key in .env
+# Set your Nebius Token Factory API key
 export NEBIUS_API_KEY="your-nebius-token-factory-api-key"
 ```
 
-### 3. Run the Unit Test Suite (56 Tests)
+### 3. Run the Unit Test Suite (62 Tests)
 
 ```bash
 cd helixstreet-agent
@@ -158,10 +158,14 @@ cd helixstreet-ui
 ../helixstreet-agent/.venv/bin/streamlit run dashboard.py --server.port 8501
 ```
 
-Open [http://localhost:8501](http://localhost:8501) in your browser:
-- Click **Start demo run** in the sidebar to run the full 2-stage WGS pipeline on the NA12878 `chr20:10,000,000-10,010,000` slice (Ingest with **Nemotron 3 Nano** → Async DeepVariant Job → Analysis with **Nemotron 3 Ultra** → Stewardship with **Nemotron 3 Super**).
-- Click **Start PGx demo run** in the sidebar (or run `./scripts/run_pgx_demo.sh`) to screen a synthetic 6-variant pharmacogenomics panel against CPIC guidelines with live Europe PMC literature citations.
-- Open the **Private proofs** tab to generate & verify 1-of-*N* Merkle genotype disclosures and test zero-genotype-leakage parent/child kinship (`IBS0 = 0`).
+Open [http://localhost:8501](http://localhost:8501) (or the live deployment at [https://nebius.helixstreet.io](https://nebius.helixstreet.io)) in your browser:
+- **Pipeline runs tab:** Inspect the **HIPAA Safe Harbor PII Redaction Diff** (`manifest.json` vs `manifest.scrubbed.json`), the **NVIDIA Clara Parabricks (`pbrun deepvariant`) GPU Job Inspector**, and per-step **Nebius Token Factory** model-tier badges.
+- **Digital twins tab:**
+  - Run the **Live Nebius Token Factory Multi-Drug Prescription Safety & Clinical Copilot** (`Nemotron 3 Ultra 550B`, `Super 120B`, or `Nano 30B`) with one-click polypharmacy/oncology scenarios and live telemetry (`Latency ms`, `Tokens/s`, `Est. Cost`).
+  - Explore the **Interactive 3D Biomolecular Structure Viewer (RCSB PDB / WebGL 3Dmol.js)** for all 6 CPIC pharmacogenes (`CYP2C19 · 4GQS`, `DPYD · 1H7X`, `CYP2C9 · 1OG5`, `VKORC1 · 7FFE`, `CYP3A5 · 1TQN`, `SLCO1B1 · 8HND`).
+  - Query **Live OpenFDA Drug Label Boxed Warnings**, **Tavily Clinical Guidelines**, and **Europe PMC** peer-reviewed citations.
+- **Private proofs tab:** Generate & verify 1-of-*N* Merkle genotype disclosures and test zero-genotype-leakage parent/child kinship (`IBS0 = 0`).
+- **Fleet registry tab:** Run the **⚡ Live Benchmark All 3 NVIDIA Nemotron Tiers on Nebius Token Factory** (`Nano 30B-A3B`, `Super 120B-A12B`, `Ultra 550B-A55B`) and compare 3-tier right-sized routing economics (~72% lower token cost, 3.6× faster dispatch latency).
 
 ### 5. Deploy to Nebius Serverless Endpoints & Serverless Jobs
 

@@ -3,7 +3,9 @@ import json
 
 from fleet.tools.pharmacogenomics import (
     PGX_REFERENCE,
+    PGX_STRUCTURES,
     _zygosity,
+    fetch_openfda_drug_label,
     match_pgx_variants,
     search_tavily_clinical_guidelines,
 )
@@ -94,3 +96,22 @@ class TestTavilyClinicalSearch:
         assert len(res) == 1
         assert res[0]["source"] == "Tavily Clinical Search"
         assert "cpicpgx.org" in res[0]["url"]
+
+
+class TestOpenFDALabelAndStructures:
+    def test_pgx_structures_cover_all_six_demo_genes(self):
+        for gene in ("CYP2C19", "DPYD", "CYP2C9", "VKORC1", "CYP3A5", "SLCO1B1"):
+            assert gene in PGX_STRUCTURES
+            assert len(PGX_STRUCTURES[gene]["pdb_id"]) == 4
+            assert PGX_STRUCTURES[gene]["highlight_residues"]
+
+    def test_openfda_fallback_returns_boxed_warning_when_offline(self, monkeypatch):
+        import requests
+
+        def _raise(*a, **kw):
+            raise RuntimeError("network offline")
+
+        monkeypatch.setattr(requests, "get", _raise)
+        label = fetch_openfda_drug_label("clopidogrel")
+        assert label["drug"] == "clopidogrel"
+        assert "CYP2C19" in label["boxed_warning"]

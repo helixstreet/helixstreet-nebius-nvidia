@@ -1,0 +1,8 @@
+{
+  "patient_name": "[PERSON_NAME]",
+  "date_of_birth": "[DATE_OF_BIRTH]",
+  "contact_email": "[EMAIL_ADDRESS]",
+  "sample_id": "pgx-demo-001",
+  "assay": "Targeted pharmacogenomics panel (synthetic demo genotype)",
+  "consent": "research-use-only, fully synthetic sample"
+}
