@@ -1,0 +1,304 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1860 980" width="1860" height="980" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b1020"/>
+      <stop offset="50%" stop-color="#10182f"/>
+      <stop offset="100%" stop-color="#0d1424"/>
+    </linearGradient>
+    <linearGradient id="nebiusBox" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#141e38"/>
+      <stop offset="100%" stop-color="#0f172a"/>
+    </linearGradient>
+    <linearGradient id="nanoGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#143325"/>
+      <stop offset="100%" stop-color="#0f291e"/>
+    </linearGradient>
+    <linearGradient id="ultraGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#2a1b4e"/>
+      <stop offset="100%" stop-color="#1d1238"/>
+    </linearGradient>
+    <linearGradient id="superGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#152c4e"/>
+      <stop offset="100%" stop-color="#0f203c"/>
+    </linearGradient>
+    <linearGradient id="gpuGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#1e3a12"/>
+      <stop offset="100%" stop-color="#12240b"/>
+    </linearGradient>
+    <marker id="arrowGreen" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#76B900"/>
+    </marker>
+    <marker id="arrowCyan" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#38bdf8"/>
+    </marker>
+    <marker id="arrowPurple" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#c084fc"/>
+    </marker>
+    <marker id="arrowSlate" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#94a3b8"/>
+    </marker>
+    <marker id="arrowAmber" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M 0 1 L 10 5 L 0 9 z" fill="#fbbf24"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="1860" height="980" fill="url(#bgGrad)"/>
+
+  <!-- Header Banner -->
+  <rect x="28" y="20" width="1804" height="68" rx="12" fill="#131c33" stroke="#334155" stroke-width="1.5"/>
+  <rect x="44" y="34" width="10" height="40" rx="4" fill="#76B900"/>
+  <text x="68" y="51" fill="#f8fafc" font-size="21" font-weight="700">Helixstreet — Autonomous 5-Agent Genomic Fleet Architecture (Nebius x NVIDIA Edition)</text>
+  <text x="68" y="73" fill="#94a3b8" font-size="13.5" font-weight="500">3-Tier NVIDIA Nemotron 3 (Ultra 550B · Super 120B · Nano 30B) on Nebius Token Factory  +  NVIDIA Clara Parabricks (pbrun deepvariant) on Nebius Serverless GPU Jobs</text>
+
+  <!-- Legend Pills in Header -->
+  <rect x="1250" y="36" width="180" height="34" rx="17" fill="#143325" stroke="#76B900" stroke-width="1.5"/>
+  <text x="1340" y="58" fill="#a3e635" font-size="12" font-weight="700" text-anchor="middle">Nemotron 3 Nano 30B-A3B</text>
+
+  <rect x="1442" y="36" width="185" height="34" rx="17" fill="#2a1b4e" stroke="#c084fc" stroke-width="1.5"/>
+  <text x="1534" y="58" fill="#e9d5ff" font-size="12" font-weight="700" text-anchor="middle">Nemotron 3 Ultra 550B-A55B</text>
+
+  <rect x="1639" y="36" width="176" height="34" rx="17" fill="#152c4e" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="1727" y="58" fill="#bae6fd" font-size="12" font-weight="700" text-anchor="middle">Nemotron 3 Super 120B</text>
+
+  <!-- ========================================================================= -->
+  <!-- COLUMN 1: CLIENT (nebius.helixstreet.io) -->
+  <!-- ========================================================================= -->
+  <rect x="28" y="108" width="240" height="840" rx="14" fill="url(#nebiusBox)" stroke="#334155" stroke-width="1.5"/>
+  <text x="148" y="138" fill="#38bdf8" font-size="14" font-weight="700" text-anchor="middle" letter-spacing="0.8">CLIENT · COMMAND CENTER</text>
+  <text x="148" y="158" fill="#64748b" font-size="12" text-anchor="middle">nebius.helixstreet.io</text>
+
+  <!-- Streamlit Box -->
+  <rect x="46" y="250" width="204" height="190" rx="10" fill="#1e293b" stroke="#38bdf8" stroke-width="1.8"/>
+  <text x="148" y="280" fill="#f8fafc" font-size="15" font-weight="700" text-anchor="middle">Streamlit Dashboard</text>
+  <text x="148" y="300" fill="#38bdf8" font-size="12" font-weight="600" text-anchor="middle">6 Interactive Live Views</text>
+  <line x1="62" y1="312" x2="234" y2="312" stroke="#334155" stroke-width="1"/>
+  <text x="62" y="334" fill="#cbd5e1" font-size="12">• Pipeline runs &amp; traces</text>
+  <text x="62" y="354" fill="#cbd5e1" font-size="12">• Genomic Digital Twins</text>
+  <text x="62" y="374" fill="#cbd5e1" font-size="12">• 1-of-N Merkle Proofs</text>
+  <text x="62" y="394" fill="#cbd5e1" font-size="12">• Zero-leakage IBS0 Kinship</text>
+  <text x="62" y="414" fill="#cbd5e1" font-size="12">• Fleet Registry &amp; Audit Chain</text>
+
+  <!-- Demo Triggers Box -->
+  <rect x="46" y="480" width="204" height="145" rx="10" fill="#172033" stroke="#475569" stroke-width="1.2"/>
+  <text x="148" y="506" fill="#e2e8f0" font-size="13" font-weight="700" text-anchor="middle">1-Click Sample Staging</text>
+  <text x="60" y="530" fill="#94a3b8" font-size="11.5">1. GIAB NA12878 chr20 BAM</text>
+  <text x="60" y="548" fill="#94a3b8" font-size="11.5">   + synthetic PII manifest</text>
+  <text x="60" y="574" fill="#94a3b8" font-size="11.5">2. CPIC Level-A PGx VCF</text>
+  <text x="60" y="592" fill="#94a3b8" font-size="11.5">   (6 actionable star alleles)</text>
+  <text x="60" y="614" fill="#76B900" font-size="11" font-weight="600">→ Never calls agents directly</text>
+
+  <!-- ========================================================================= -->
+  <!-- COLUMN 2: NEBIUS OBJECT STORAGE & EVENT WEBHOOK -->
+  <!-- ========================================================================= -->
+  <rect x="292" y="108" width="245" height="630" rx="14" fill="url(#nebiusBox)" stroke="#334155" stroke-width="1.5"/>
+  <text x="414" y="138" fill="#fbbf24" font-size="14" font-weight="700" text-anchor="middle" letter-spacing="0.8">STORAGE &amp; EVENTS</text>
+  <text x="414" y="158" fill="#64748b" font-size="12" text-anchor="middle">Nebius Object Storage (S3)</text>
+
+  <!-- Bucket Cylinder/Box -->
+  <rect x="312" y="255" width="205" height="135" rx="12" fill="#1e293b" stroke="#fbbf24" stroke-width="1.8"/>
+  <text x="414" y="283" fill="#fef08a" font-size="14.5" font-weight="700" text-anchor="middle">Nebius Object Storage</text>
+  <text x="414" y="302" fill="#fbbf24" font-size="11.5" font-family="monospace" text-anchor="middle">s3://helixstreet-nebius-data</text>
+  <line x1="326" y1="314" x2="502" y2="314" stroke="#334155" stroke-width="1"/>
+  <text x="326" y="335" fill="#cbd5e1" font-size="11.5" font-family="monospace">uploads/{uid}/sample.bam</text>
+  <text x="326" y="354" fill="#cbd5e1" font-size="11.5" font-family="monospace">uploads/{uid}/manifest.json</text>
+  <text x="326" y="373" fill="#a3e635" font-size="11.5" font-family="monospace">results/{uid}/output.vcf.gz</text>
+
+  <!-- Webhook Box -->
+  <rect x="312" y="445" width="205" height="90" rx="10" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="414" y="475" fill="#f8fafc" font-size="14" font-weight="700" text-anchor="middle">Storage Webhook</text>
+  <text x="414" y="496" fill="#38bdf8" font-size="12" font-family="monospace" text-anchor="middle">POST /eventarc</text>
+  <text x="414" y="516" fill="#94a3b8" font-size="11.5" text-anchor="middle">s3:ObjectCreated / finalized</text>
+
+  <!-- Arrow Bucket -> Webhook -->
+  <path d="M 414 390 L 414 440" stroke="#fbbf24" stroke-width="2" fill="none" marker-end="url(#arrowAmber)"/>
+
+  <!-- ========================================================================= -->
+  <!-- COLUMN 3: NEBIUS TOKEN FACTORY + GOOGLE ADK MULTI-AGENT FLEET -->
+  <!-- ========================================================================= -->
+  <rect x="562" y="108" width="905" height="630" rx="14" fill="#111a2e" stroke="#76B900" stroke-width="2"/>
+  <text x="1014" y="136" fill="#76B900" font-size="15.5" font-weight="700" text-anchor="middle">helixstreet-fleet · Google ADK Runtime · Powered by Nebius Token Factory (api.tokenfactory.nebius.com/v1)</text>
+  <text x="1014" y="157" fill="#cbd5e1" font-size="12.5" text-anchor="middle">Custom NebiusTokenFactoryLlm(BaseLlm) Adapter · Right-Sized 3-Tier NVIDIA Nemotron 3 Open-Model Routing</text>
+
+  <!-- Deterministic Event Router Diamond -->
+  <polygon points="655,390 730,455 655,520 580,455" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>
+  <text x="655" y="446" fill="#f8fafc" font-size="12.5" font-weight="700" text-anchor="middle">Deterministic</text>
+  <text x="655" y="464" fill="#38bdf8" font-size="12" font-weight="600" text-anchor="middle">Event Router</text>
+  <text x="655" y="481" fill="#94a3b8" font-size="10.5" font-family="monospace" text-anchor="middle">router.py</text>
+
+  <!-- INGEST PIPELINE SUB-BOX -->
+  <rect x="765" y="176" width="680" height="190" rx="10" fill="#0d1526" stroke="#22c55e" stroke-width="1.2" stroke-dasharray="5,4"/>
+  <text x="782" y="198" fill="#4ade80" font-size="12.5" font-weight="700" letter-spacing="0.6">INGEST PIPELINE (SequentialAgent · Triggers on uploads/{uid}/*.bam)</text>
+
+  <!-- Agent 1: helixstreet_intake -->
+  <rect x="782" y="212" width="305" height="136" rx="10" fill="url(#nanoGrad)" stroke="#76B900" stroke-width="2"/>
+  <text x="934" y="236" fill="#f8fafc" font-size="14.5" font-weight="700" text-anchor="middle">1. helixstreet_intake</text>
+  <rect x="802" y="245" width="265" height="22" rx="6" fill="#0b1f17" stroke="#4ade80" stroke-width="1"/>
+  <text x="934" y="260" fill="#a3e635" font-size="11" font-family="monospace" font-weight="700" text-anchor="middle">nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B</text>
+  <text x="798" y="286" fill="#d1fae5" font-size="12">• Prompt-injection &amp; biosecurity screen</text>
+  <text x="798" y="306" fill="#d1fae5" font-size="12">• HIPAA Safe Harbor PII redaction</text>
+  <text x="798" y="326" fill="#d1fae5" font-size="12">• SHA-256 + CRC32C BAM fingerprint</text>
+
+  <!-- Agent 2: helixstreet_variant_caller -->
+  <rect x="1122" y="212" width="305" height="136" rx="10" fill="url(#nanoGrad)" stroke="#76B900" stroke-width="2"/>
+  <text x="1274" y="236" fill="#f8fafc" font-size="14.5" font-weight="700" text-anchor="middle">2. helixstreet_variant_caller</text>
+  <rect x="1142" y="245" width="265" height="22" rx="6" fill="#0b1f17" stroke="#4ade80" stroke-width="1"/>
+  <text x="1274" y="260" fill="#a3e635" font-size="11" font-family="monospace" font-weight="700" text-anchor="middle">nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B</text>
+  <text x="1138" y="286" fill="#d1fae5" font-size="12">• Dispatches Clara Parabricks GPU job</text>
+  <text x="1138" y="306" fill="#d1fae5" font-size="12">• Saves expected VCF URI to Memory Bank</text>
+  <text x="1138" y="326" fill="#fde047" font-size="12" font-weight="600">• Exits turn (0 idle token burn during GPU)</text>
+
+  <!-- Arrow Intake -> Variant Caller -->
+  <path d="M 1087 280 L 1117 280" stroke="#76B900" stroke-width="2.2" fill="none" marker-end="url(#arrowGreen)"/>
+
+  <!-- ANALYSIS PIPELINE SUB-BOX -->
+  <rect x="765" y="392" width="680" height="328" rx="10" fill="#0d1526" stroke="#c084fc" stroke-width="1.2" stroke-dasharray="5,4"/>
+  <text x="782" y="414" fill="#d8b4fe" font-size="12.5" font-weight="700" letter-spacing="0.6">ANALYSIS PIPELINE (SequentialAgent · Async Resume when output.vcf.gz or *.vcf lands)</text>
+
+  <!-- Agent 3: helixstreet_analyst -->
+  <rect x="782" y="430" width="305" height="142" rx="10" fill="url(#ultraGrad)" stroke="#c084fc" stroke-width="2"/>
+  <text x="934" y="454" fill="#f8fafc" font-size="14.5" font-weight="700" text-anchor="middle">3. helixstreet_analyst</text>
+  <rect x="807" y="463" width="255" height="22" rx="6" fill="#180d2c" stroke="#c084fc" stroke-width="1"/>
+  <text x="934" y="478" fill="#e9d5ff" font-size="11" font-family="monospace" font-weight="700" text-anchor="middle">nvidia/Nemotron-3-Ultra-550b-a55b</text>
+  <text x="798" y="504" fill="#f3e8ff" font-size="12">• Parses PASS variants from VCF</text>
+  <text x="798" y="524" fill="#f3e8ff" font-size="12">• 1000 Genomes AFs (0/1-based offset fix)</text>
+  <text x="798" y="544" fill="#fde047" font-size="12" font-weight="600">• Seals salted SHA-256 Merkle commitment</text>
+
+  <!-- Agent 4: helixstreet_pharmacist -->
+  <rect x="1122" y="430" width="305" height="142" rx="10" fill="url(#ultraGrad)" stroke="#c084fc" stroke-width="2"/>
+  <text x="1274" y="454" fill="#f8fafc" font-size="14.5" font-weight="700" text-anchor="middle">4. helixstreet_pharmacist</text>
+  <rect x="1147" y="463" width="255" height="22" rx="6" fill="#180d2c" stroke="#c084fc" stroke-width="1"/>
+  <text x="1274" y="478" fill="#e9d5ff" font-size="11" font-family="monospace" font-weight="700" text-anchor="middle">nvidia/Nemotron-3-Ultra-550b-a55b</text>
+  <text x="1138" y="504" fill="#f3e8ff" font-size="12">• Screens CPIC Level-A star alleles</text>
+  <text x="1138" y="524" fill="#f3e8ff" font-size="12">• Zygosity (het/hom) metabolizer calls</text>
+  <text x="1138" y="544" fill="#f3e8ff" font-size="12">• Live Europe PMC + Tavily FDA search</text>
+
+  <!-- Agent 5: helixstreet_steward -->
+  <rect x="952" y="592" width="340" height="114" rx="10" fill="url(#superGrad)" stroke="#38bdf8" stroke-width="2"/>
+  <text x="1122" y="616" fill="#f8fafc" font-size="14.5" font-weight="700" text-anchor="middle">5. helixstreet_steward</text>
+  <rect x="992" y="625" width="260" height="22" rx="6" fill="#0a1629" stroke="#38bdf8" stroke-width="1"/>
+  <text x="1122" y="640" fill="#bae6fd" font-size="11" font-family="monospace" font-weight="700" text-anchor="middle">nvidia/nemotron-3-super-120b-a12b</text>
+  <text x="968" y="666" fill="#e0f2fe" font-size="12">• Synthesizes structured Genomic Digital Twin</text>
+  <text x="968" y="686" fill="#e0f2fe" font-size="12">• Seals tamper-evident SHA-256 Audit Chain</text>
+
+  <!-- Arrows inside Analysis Pipeline -->
+  <path d="M 1087 500 L 1117 500" stroke="#c084fc" stroke-width="2.2" fill="none" marker-end="url(#arrowPurple)"/>
+  <path d="M 1345 572 L 1345 648 L 1298 648" stroke="#38bdf8" stroke-width="2.2" fill="none" marker-end="url(#arrowCyan)"/>
+
+  <!-- External Knowledge Databases (Bottom Center) -->
+  <rect x="650" y="775" width="320" height="125" rx="12" fill="#1e293b" stroke="#c084fc" stroke-width="1.6"/>
+  <text x="810" y="803" fill="#e9d5ff" font-size="14" font-weight="700" text-anchor="middle">1000 Genomes Phase 3 Index</text>
+  <text x="810" y="823" fill="#cbd5e1" font-size="12" text-anchor="middle">2,504 Genomes · Super-Population AFs</text>
+  <text x="810" y="843" fill="#94a3b8" font-size="11.5" font-family="monospace" text-anchor="middle">AFR · AMR · EAS · EUR · SAS</text>
+  <text x="810" y="866" fill="#a3e635" font-size="11.5" text-anchor="middle">Reconciles 1-based VCF vs 0-based GA4GH</text>
+
+  <rect x="1030" y="775" width="350" height="125" rx="12" fill="#1e293b" stroke="#c084fc" stroke-width="1.6"/>
+  <text x="1205" y="803" fill="#e9d5ff" font-size="14" font-weight="700" text-anchor="middle">Europe PMC + Tavily Clinical Search</text>
+  <text x="1205" y="823" fill="#cbd5e1" font-size="12" text-anchor="middle">Live Peer-Reviewed Literature &amp; Regulatory Labels</text>
+  <text x="1205" y="843" fill="#94a3b8" font-size="11.5" font-family="monospace" text-anchor="middle">PMIDs · DOIs · cpicpgx.org · fda.gov · pharmgkb</text>
+  <text x="1205" y="866" fill="#38bdf8" font-size="11.5" text-anchor="middle">CPIC Level-A Drug-Gene Evidence Synthesis</text>
+
+  <!-- ========================================================================= -->
+  <!-- COLUMN 4 (TOP RIGHT): NEBIUS SERVERLESS GPU JOBS (CLARA PARABRICKS) -->
+  <!-- ========================================================================= -->
+  <rect x="1492" y="108" width="340" height="235" rx="14" fill="url(#gpuGrad)" stroke="#76B900" stroke-width="2"/>
+  <text x="1662" y="136" fill="#a3e635" font-size="14" font-weight="700" text-anchor="middle" letter-spacing="0.6">NEBIUS SERVERLESS GPU JOBS</text>
+  <text x="1662" y="156" fill="#bef264" font-size="12" font-family="monospace" text-anchor="middle">gpu-l40s-a · 1gpu-8vcpu-32gb</text>
+
+  <rect x="1512" y="170" width="300" height="152" rx="10" fill="#0d1908" stroke="#76B900" stroke-width="1.5"/>
+  <text x="1662" y="196" fill="#f8fafc" font-size="14.5" font-weight="700" text-anchor="middle">NVIDIA Clara Parabricks</text>
+  <text x="1662" y="216" fill="#76B900" font-size="11" font-family="monospace" text-anchor="middle">nvcr.io/nvidia/clara/clara-parabricks:4.3.0-1</text>
+  <line x1="1526" y1="226" x2="1798" y2="226" stroke="#2d4a1e" stroke-width="1"/>
+  <text x="1526" y="246" fill="#d9f99d" font-size="11.5" font-family="monospace">pbrun deepvariant \</text>
+  <text x="1526" y="264" fill="#d9f99d" font-size="11.5" font-family="monospace">  --ref Homo_sapiens_assembly38 \</text>
+  <text x="1526" y="282" fill="#d9f99d" font-size="11.5" font-family="monospace">  --in-bam sample.bam --num-gpus 1 \</text>
+  <text x="1526" y="300" fill="#fde047" font-size="11.5" font-family="monospace">  --out-variants output.vcf.gz</text>
+
+  <!-- ========================================================================= -->
+  <!-- COLUMN 4 (BOTTOM RIGHT): MEMORY BANK & CRYPTOGRAPHIC VAULT -->
+  <!-- ========================================================================= -->
+  <rect x="1492" y="365" width="340" height="583" rx="14" fill="url(#nebiusBox)" stroke="#38bdf8" stroke-width="1.8"/>
+  <text x="1662" y="393" fill="#38bdf8" font-size="14" font-weight="700" text-anchor="middle" letter-spacing="0.6">PERSISTENT STATE &amp; VAULT</text>
+  <text x="1662" y="412" fill="#94a3b8" font-size="12" text-anchor="middle">Process-Safe SQLite WAL Memory Bank</text>
+
+  <!-- Store 1: Memory Bank -->
+  <rect x="1514" y="428" width="296" height="110" rx="10" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5"/>
+  <text x="1662" y="454" fill="#f8fafc" font-size="14" font-weight="700" text-anchor="middle">Memory Bank</text>
+  <text x="1662" y="474" fill="#38bdf8" font-size="11.5" font-family="monospace" text-anchor="middle">digital_twins · pipeline_state</text>
+  <text x="1662" y="496" fill="#cbd5e1" font-size="11.5" text-anchor="middle">Bridges async GPU gap + stores</text>
+  <text x="1662" y="514" fill="#cbd5e1" font-size="11.5" text-anchor="middle">per-turn Nemotron 3 reasoning traces</text>
+
+  <!-- Store 2: Hash-Chained Audit Ledger -->
+  <rect x="1514" y="556" width="296" height="110" rx="10" fill="#1e293b" stroke="#4ade80" stroke-width="1.5"/>
+  <text x="1662" y="582" fill="#f8fafc" font-size="14" font-weight="700" text-anchor="middle">Hash-Chained Audit Ledger</text>
+  <text x="1662" y="602" fill="#4ade80" font-size="11.5" font-family="monospace" text-anchor="middle">SHA-256(prev_hash || canonical_json)</text>
+  <text x="1662" y="624" fill="#cbd5e1" font-size="11.5" text-anchor="middle">Anchors BAM fingerprint, Merkle root,</text>
+  <text x="1662" y="642" fill="#cbd5e1" font-size="11.5" text-anchor="middle">and every agent action end-to-end</text>
+
+  <!-- Store 3: Genome Vault -->
+  <rect x="1514" y="684" width="296" height="116" rx="10" fill="#1e293b" stroke="#c084fc" stroke-width="1.5"/>
+  <text x="1662" y="710" fill="#f8fafc" font-size="14" font-weight="700" text-anchor="middle">Genome Vault (Merkle Trees)</text>
+  <text x="1662" y="730" fill="#d8b4fe" font-size="11.5" font-family="monospace" text-anchor="middle">SHA-256("leaf:" + key + gt + salt)</text>
+  <text x="1662" y="752" fill="#cbd5e1" font-size="11.5" text-anchor="middle">1-of-N minimal genotype disclosure</text>
+  <text x="1662" y="770" fill="#cbd5e1" font-size="11.5" text-anchor="middle">&amp; aggregate IBS0 kinship verification</text>
+
+  <!-- Store 4: Agent Registry -->
+  <rect x="1514" y="818" width="296" height="106" rx="10" fill="#1e293b" stroke="#fbbf24" stroke-width="1.5"/>
+  <text x="1662" y="844" fill="#f8fafc" font-size="14" font-weight="700" text-anchor="middle">Fleet Agent Registry</text>
+  <text x="1662" y="864" fill="#fbbf24" font-size="11.5" font-family="monospace" text-anchor="middle">agent_registry (5 AgentCards)</text>
+  <text x="1662" y="886" fill="#cbd5e1" font-size="11.5" text-anchor="middle">Publishes NVIDIA Nemotron 3 tier,</text>
+  <text x="1662" y="904" fill="#cbd5e1" font-size="11.5" text-anchor="middle">capabilities &amp; least-privilege scopes</text>
+
+  <!-- ========================================================================= -->
+  <!-- INTER-COLUMN ARROWS & LABELS -->
+  <!-- ========================================================================= -->
+
+  <!-- 1. Dashboard -> Nebius Object Storage (upload BAM + manifest / VCF) -->
+  <path d="M 250 320 L 306 320" stroke="#fbbf24" stroke-width="2.2" fill="none" marker-end="url(#arrowAmber)"/>
+  <rect x="253" y="286" width="52" height="24" rx="4" fill="#0f172a"/>
+  <text x="279" y="302" fill="#fde047" font-size="10.5" font-weight="600" text-anchor="middle">upload</text>
+
+  <!-- 2. Webhook -> Deterministic Router -->
+  <path d="M 517 455 L 575 455" stroke="#38bdf8" stroke-width="2.2" fill="none" marker-end="url(#arrowCyan)"/>
+
+  <!-- 3. Router -> Intake (*.bam uploaded) -->
+  <path d="M 655 390 L 655 280 L 776 280" stroke="#76B900" stroke-width="2.2" fill="none" marker-end="url(#arrowGreen)"/>
+  <rect x="662" y="255" width="96" height="20" rx="4" fill="#0f172a"/>
+  <text x="710" y="269" fill="#a3e635" font-size="11" font-weight="600" text-anchor="middle">*.bam uploaded</text>
+
+  <!-- 4. Router -> Analyst (output.vcf.gz landed / async resume) -->
+  <path d="M 730 455 L 755 455 L 755 500 L 776 500" stroke="#c084fc" stroke-width="2.2" fill="none" marker-end="url(#arrowPurple)"/>
+  <rect x="660" y="526" width="118" height="34" rx="4" fill="#0f172a"/>
+  <text x="719" y="541" fill="#e9d5ff" font-size="10.5" font-weight="600" text-anchor="middle">output.vcf.gz landed</text>
+  <text x="719" y="555" fill="#c084fc" font-size="10" text-anchor="middle">(async resume)</text>
+
+  <!-- 5. Variant Caller -> Clara Parabricks GPU Job -->
+  <path d="M 1427 250 L 1506 250" stroke="#76B900" stroke-width="2.4" fill="none" marker-end="url(#arrowGreen)"/>
+  <rect x="1432" y="220" width="72" height="22" rx="4" fill="#0f172a"/>
+  <text x="1468" y="235" fill="#a3e635" font-size="10.5" font-weight="700" text-anchor="middle">submit GPU</text>
+
+  <!-- 6. Clara Parabricks GPU Job -> Nebius Object Storage (writes output.vcf.gz) -->
+  <path d="M 1662 108 L 1662 96 L 495 96 L 495 250" stroke="#76B900" stroke-width="2" stroke-dasharray="6,4" fill="none" marker-end="url(#arrowGreen)"/>
+  <rect x="910" y="84" width="250" height="22" rx="6" fill="#143325" stroke="#76B900" stroke-width="1"/>
+  <text x="1035" y="99" fill="#d9f99d" font-size="11" font-weight="700" text-anchor="middle">Parabricks writes output.vcf.gz → wakes Fleet</text>
+
+  <!-- 7. Analyst -> 1000 Genomes -->
+  <path d="M 860 572 L 810 770" stroke="#c084fc" stroke-width="2" fill="none" marker-end="url(#arrowPurple)"/>
+
+  <!-- 8. Pharmacist -> Europe PMC + Tavily -->
+  <path d="M 1395 572 L 1395 735 L 1205 735 L 1205 770" stroke="#c084fc" stroke-width="2" fill="none" marker-end="url(#arrowPurple)"/>
+
+  <!-- 9. Fleet Agents -> Memory Bank, Audit Ledger, Genome Vault -->
+  <path d="M 1427 310 L 1475 310 L 1475 475 L 1508 475" stroke="#38bdf8" stroke-width="1.8" fill="none" marker-end="url(#arrowCyan)"/>
+  <path d="M 1292 630 L 1465 630 L 1465 495 L 1508 495" stroke="#38bdf8" stroke-width="2" fill="none" marker-end="url(#arrowCyan)"/>
+  <path d="M 1292 668 L 1475 668 L 1475 610 L 1508 610" stroke="#4ade80" stroke-width="2" fill="none" marker-end="url(#arrowGreen)"/>
+  <path d="M 1015 572 L 1015 582 L 1455 582 L 1455 740 L 1508 740" stroke="#c084fc" stroke-width="2" fill="none" marker-end="url(#arrowPurple)"/>
+
+  <!-- 10. Streamlit Dashboard <- Live Reads & Private Proofs from State & Vault -->
+  <path d="M 1514 505 L 1480 505 L 1480 925 L 148 925 L 148 630" stroke="#94a3b8" stroke-width="1.8" stroke-dasharray="5,4" fill="none" marker-end="url(#arrowSlate)"/>
+  <path d="M 1514 630 L 1480 630" stroke="#94a3b8" stroke-width="1.8" stroke-dasharray="5,4" fill="none"/>
+  <path d="M 1514 755 L 1480 755" stroke="#94a3b8" stroke-width="1.8" stroke-dasharray="5,4" fill="none"/>
+  <path d="M 1514 875 L 1480 875" stroke="#94a3b8" stroke-width="1.8" stroke-dasharray="5,4" fill="none"/>
+  <rect x="735" y="912" width="380" height="24" rx="6" fill="#1e293b" stroke="#475569" stroke-width="1"/>
+  <text x="925" y="928" fill="#e2e8f0" font-size="11.5" font-weight="600" text-anchor="middle">Live telemetry reads + 1-of-N Merkle proofs &amp; Audit verification</text>
+</svg>

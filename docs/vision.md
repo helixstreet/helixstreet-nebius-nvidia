@@ -50,8 +50,7 @@ This is implemented in Helixstreet today: the intake agent fingerprints the raw 
 
 ## The roadmap the video gestures at
 
-- **Now (demonstrated):** file lands → fleet does compliance, DeepVariant, 1000
-  Genomes, CPIC pharmacogenomics, twin + fingerprint — hands-off, concurrent, audited.
+- **Now (demonstrated):** file lands in Nebius Object Storage → 5-agent fleet powered by **NVIDIA Nemotron 3 (Nano 30B · Super 120B · Ultra 550B)** on **Nebius Token Factory** and **NVIDIA Clara Parabricks (`pbrun deepvariant`)** on **Nebius Serverless GPU Jobs** executes compliance, GPU variant calling, 1000 Genomes annotation, CPIC pharmacogenomics (with Europe PMC + Tavily), Merkle commitment sealing, and Digital Twin synthesis — hands-off, concurrent, audited.
 - **Next:** the sequencer as a fleet client — instruments stream reads into the
   drop-zone as runs progress; agents begin QC and triage *during* sequencing.
 - **Then:** lifelong re-analysis — when knowledge bases update (new CPIC guidance,

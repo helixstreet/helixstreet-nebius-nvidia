@@ -325,6 +325,35 @@ with tab_runs:
                 st.metric("Nemotron 3 Ultra (550B-A55B) steps", ultra_steps, border=True)
                 st.metric("Nemotron 3 Super (120B-A12B) steps", super_steps, border=True)
 
+            pb_entry = next(
+                (
+                    e
+                    for e in trace
+                    if e.get("type") == "tool_result"
+                    and e.get("tool") in ("submit_parabricks_job", "submit_deepvariant_job")
+                ),
+                None,
+            )
+            if pb_entry and pb_entry.get("result"):
+                try:
+                    pb_data = json.loads(pb_entry["result"])
+                except (json.JSONDecodeError, TypeError):
+                    pb_data = {}
+                with st.container(border=True):
+                    st.markdown(
+                        ":material/memory: **NVIDIA Clara Parabricks Secondary Analysis (GPU Variant Calling)** · "
+                        f":green-badge[{pb_data.get('image', 'nvcr.io/nvidia/clara/clara-parabricks:4.3.0-1')}] · "
+                        f":blue-badge[{pb_data.get('platform', 'gpu-l40s-a')} ({pb_data.get('preset', '1gpu-8vcpu-32gb')})]"
+                    )
+                    st.code(
+                        f"pbrun deepvariant \\\n"
+                        f"  --ref /mnt/nebius/reference/Homo_sapiens_assembly38.fasta \\\n"
+                        f"  --in-bam /mnt/nebius/uploads/{selected}/sample.bam \\\n"
+                        f"  --out-variants /mnt/nebius/results/{selected}/deepvariant/output.vcf.gz \\\n"
+                        f"  --interval chr20:10000000-10010000 --num-gpus {pb_data.get('num_gpus', 1)}",
+                        language="bash",
+                    )
+
         for entry in trace[-40:]:
             icon = {"tool_call": "🔧", "tool_result": "📦", "message": "💬"}.get(
                 entry.get("type"), "•"
