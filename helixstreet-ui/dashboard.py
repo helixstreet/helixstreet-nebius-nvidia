@@ -670,15 +670,12 @@ with tab_twins:
                     ],
                     format_func=lambda pair: f"{pair[0].title()} ({pair[1]})",
                 )
-                tavily_key_input = st.text_input(
-                    "Optional Tavily API Key (`TAVILY_API_KEY`) for live CPIC/FDA web search:",
-                    type="password",
-                    placeholder="tvly-... (leave blank to use OpenFDA + Europe PMC)",
-                )
-                if st.button("Fetch Live FDA Label + Literature Evidence", icon=":material/policy:", use_container_width=True):
-                    if tavily_key_input.strip():
-                        os.environ["TAVILY_API_KEY"] = tavily_key_input.strip()
-                    with st.spinner(f"Querying OpenFDA, Europe PMC, and Tavily for {reg_drug[0]} ({reg_drug[1]})…"):
+                if os.getenv("TAVILY_API_KEY"):
+                    st.markdown(
+                        ":green-badge[✓ Live Tavily Clinical Search Active (`cpicpgx.org` · `fda.gov` · `pharmgkb.org` · `ncbi.nlm.nih.gov`)]"
+                    )
+                if st.button("Fetch Live FDA Label + Tavily + Europe PMC Evidence", icon=":material/policy:", use_container_width=True):
+                    with st.spinner(f"Querying OpenFDA, Tavily Clinical Search, and Europe PMC for {reg_drug[0]} ({reg_drug[1]})…"):
                         fda_info = fetch_openfda_drug_label(reg_drug[0])
                         lit_info = search_literature(f"{reg_drug[1]} {reg_drug[0]} CPIC pharmacogenomics")
                         st.session_state["last_reg_evidence"] = {
