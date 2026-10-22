@@ -414,6 +414,7 @@ with tab_twins:
         PGX_STRUCTURES,
         fetch_openfda_drug_label,
         search_literature,
+        search_tavily_clinical_guidelines,
     )
 
     twins = collection_dicts("digital_twins")
@@ -475,6 +476,12 @@ with tab_twins:
                             )
                         else:
                             st.markdown(f":material/article: {cite}")
+                    for tg in (ins.get("tavily_guidelines") or [])[:2]:
+                        if isinstance(tg, dict):
+                            st.markdown(
+                                f":material/travel_explore: :violet-badge[Tavily Clinical Search] "
+                                f"[{tg.get('title','')}]({tg.get('url','')})"
+                            )
             st.caption(
                 "Research-grade annotations from a curated CPIC-derived reference — "
                 "not medical advice."
@@ -526,6 +533,10 @@ with tab_twins:
                 value=preset_prompt or "",
                 placeholder="e.g., What antiplatelet and statin combination is safest for this patient's genotype?",
             )
+            use_tavily_rag = st.checkbox(
+                "🔍 Ground NVIDIA Nemotron 3 in live Tavily Clinical Search (`cpicpgx.org` · `fda.gov` · `pharmgkb.org` · `ncbi.nlm.nih.gov`)",
+                value=bool(os.getenv("TAVILY_API_KEY")),
+            )
             run_copilot = bool(preset_prompt) or st.button(
                 "Run Live Nemotron 3 Synthesis on Nebius Token Factory",
                 icon=":material/bolt:",
@@ -533,12 +544,32 @@ with tab_twins:
             )
             if run_copilot and (preset_prompt or custom_q.strip()):
                 query_text = preset_prompt or custom_q.strip()
-                with st.spinner(f"Calling `{copilot_model}` on Nebius Token Factory (`api.tokenfactory.nebius.com`)…"):
+                with st.spinner(
+                    f"Querying Tavily Clinical Search + `{copilot_model}` on Nebius Token Factory (`api.tokenfactory.nebius.com`)…"
+                ):
                     try:
                         from fleet import clients
 
+                        tavily_hits = []
+                        tavily_ms = 0
+                        if use_tavily_rag and os.getenv("TAVILY_API_KEY"):
+                            t_tav = time.perf_counter()
+                            genes_in_twin = " ".join(
+                                sorted({i.get("gene", "") for i in (data.get("medication_insights") or []) if i.get("gene")})
+                            )
+                            tavily_hits = search_tavily_clinical_guidelines(
+                                f"{genes_in_twin} {query_text[:120]}"
+                            )
+                            tavily_ms = int((time.perf_counter() - t_tav) * 1000)
+
                         t0 = time.perf_counter()
                         tf_client = clients.token_factory()
+                        tavily_context = (
+                            "\n\nLive Tavily Clinical Guideline Search Results:\n"
+                            + json.dumps(tavily_hits, indent=2)
+                            if tavily_hits
+                            else ""
+                        )
                         resp = tf_client.chat.completions.create(
                             model=copilot_model,
                             messages=[
@@ -547,13 +578,14 @@ with tab_twins:
                                     "content": (
                                         "You are Helixstreet Clinical Copilot running on NVIDIA Nemotron 3 via Nebius Token Factory. "
                                         "Provide concise, structured, research-grade pharmacogenomic and genomic analysis grounded "
-                                        "strictly in the patient's Digital Twin JSON and CPIC Level-A guidelines. Always include a "
-                                        "brief research-use disclaimer."
+                                        "strictly in the patient's Digital Twin JSON, CPIC Level-A guidelines, and any live Tavily "
+                                        "clinical guideline results provided. Cite source URLs when present and include a brief "
+                                        "research-use disclaimer."
                                     ),
                                 },
                                 {
                                     "role": "user",
-                                    "content": f"Digital Twin ({selected}):\n{json.dumps(data, indent=2)}\n\nClinical Question:\n{query_text}",
+                                    "content": f"Digital Twin ({selected}):\n{json.dumps(data, indent=2)}{tavily_context}\n\nClinical Question:\n{query_text}",
                                 },
                             ],
                             temperature=0.2,
@@ -582,6 +614,8 @@ with tab_twins:
                             "query": query_text,
                             "answer": answer,
                             "latency_ms": elapsed_ms,
+                            "tavily_ms": tavily_ms,
+                            "tavily_hits": tavily_hits,
                             "prompt_tokens": p_tok,
                             "completion_tokens": c_tok,
                             "tok_per_s": tok_per_s,
@@ -594,12 +628,23 @@ with tab_twins:
                 res = st.session_state["last_copilot_result"]
                 with st.container(horizontal=True):
                     st.metric("Nebius Token Factory Model", res["model"].split("/")[-1], border=True)
-                    st.metric("Live Latency", f"{res['latency_ms']} ms", border=True)
-                    st.metric("Tokens (Prompt / Completion)", f"{res['prompt_tokens']} / {res['completion_tokens']}", border=True)
+                    st.metric("Nemotron Latency", f"{res['latency_ms']} ms", border=True)
+                    st.metric(
+                        "Tavily Search",
+                        f"{len(res.get('tavily_hits') or [])} hits ({res.get('tavily_ms', 0)} ms)"
+                        if res.get("tavily_hits")
+                        else "Off",
+                        border=True,
+                    )
+                    st.metric("Tokens (In / Out)", f"{res['prompt_tokens']} / {res['completion_tokens']}", border=True)
                     st.metric("Throughput", f"{res['tok_per_s']} tok/s", border=True)
-                    st.metric("Est. Inference Cost", res["est_cost"], border=True)
+                    st.metric("Est. Token Cost", res["est_cost"], border=True)
                 st.info(f"**Query ({res['twin']}):** {res['query']}")
                 st.markdown(res["answer"])
+                if res.get("tavily_hits"):
+                    with st.expander(":material/travel_explore: **Live Tavily Clinical Citations Grounding This Response**", expanded=True):
+                        for h in res["tavily_hits"]:
+                            st.markdown(f"- **[{h.get('title')}]({h.get('url')})** — {h.get('snippet','')}")
 
         st.divider()
         col_3d, col_fda = st.columns([1.15, 1], gap="medium")
