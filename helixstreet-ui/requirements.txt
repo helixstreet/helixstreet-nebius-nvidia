@@ -50,3 +50,5 @@ typing_extensions==4.16.0
 urllib3==2.7.0
 uvicorn==0.52.4
 websockets==16.1.1
+boto3>=1.35.0
+python-dotenv>=1.0.0

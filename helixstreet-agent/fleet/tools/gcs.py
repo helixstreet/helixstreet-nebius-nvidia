@@ -1,18 +1,20 @@
-"""Small GCS text helpers exposed to agents."""
+"""Storage text & fingerprinting helpers exposed to agents (supports gs://, s3://, nebius://)."""
 from .. import clients
 
 
-def _split(gcs_uri: str):
-    assert gcs_uri.startswith("gs://"), f"not a GCS URI: {gcs_uri}"
-    bucket, _, name = gcs_uri[5:].partition("/")
-    return bucket, name
+def _split(uri: str):
+    for prefix in ("gs://", "s3://", "nebius://"):
+        if uri.startswith(prefix):
+            bucket, _, name = uri[len(prefix) :].partition("/")
+            return bucket, name
+    raise AssertionError(f"not a supported storage URI (gs://, s3://, nebius://): {uri}")
 
 
 def read_gcs_text(gcs_uri: str) -> str:
-    """Reads a small text file (e.g. a patient manifest) from Cloud Storage.
+    """Reads a small text file (e.g. a patient manifest) from Object Storage.
 
     Args:
-        gcs_uri: Full gs:// URI of the object to read.
+        gcs_uri: Full gs:// or s3:// URI of the object to read.
     """
     bucket, name = _split(gcs_uri)
     blob = clients.storage().bucket(bucket).blob(name)
@@ -22,15 +24,14 @@ def read_gcs_text(gcs_uri: str) -> str:
 
 
 def fingerprint_gcs_object(gcs_uri: str) -> dict:
-    """Computes a tamper-evident fingerprint of a genomic file in Cloud Storage.
+    """Computes a tamper-evident fingerprint of a genomic file in Object Storage.
 
-    Returns the object's size, generation, and server-side CRC32C/MD5 checksums
-    (available at any scale without downloading), plus a full SHA-256 of the
-    content for objects under 100 MB. Anchoring this in the audit ledger lets
-    any future analysis prove it derives from this exact genome.
+    Returns the object's size, generation, and CRC32C/MD5 checksums, plus a full
+    SHA-256 of the content for objects under 100 MB. Anchoring this in the audit
+    ledger lets any future analysis prove it derives from this exact genome.
 
     Args:
-        gcs_uri: Full gs:// URI of the object to fingerprint.
+        gcs_uri: Full gs:// or s3:// URI of the object to fingerprint.
     """
     import hashlib
 
@@ -51,10 +52,10 @@ def fingerprint_gcs_object(gcs_uri: str) -> dict:
 
 
 def write_gcs_text(gcs_uri: str, content: str) -> str:
-    """Writes text content (e.g. a scrubbed manifest) to Cloud Storage.
+    """Writes text content (e.g. a scrubbed manifest) to Object Storage.
 
     Args:
-        gcs_uri: Full gs:// destination URI.
+        gcs_uri: Full gs:// or s3:// destination URI.
         content: The text to write.
     """
     bucket, name = _split(gcs_uri)

@@ -1,7 +1,12 @@
 """PGx zygosity handling and CPIC reference matching."""
 import json
 
-from fleet.tools.pharmacogenomics import PGX_REFERENCE, _zygosity, match_pgx_variants
+from fleet.tools.pharmacogenomics import (
+    PGX_REFERENCE,
+    _zygosity,
+    match_pgx_variants,
+    search_tavily_clinical_guidelines,
+)
 
 
 def _variant(rsid, genotype):
@@ -57,3 +62,35 @@ class TestMatching:
     def test_disclaimer_always_present(self):
         result = match_pgx_variants(json.dumps([]))
         assert "Research-grade" in result["disclaimer"]
+
+
+class TestTavilyClinicalSearch:
+    def test_returns_empty_list_when_key_missing(self, monkeypatch):
+        monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+        assert search_tavily_clinical_guidelines("CYP2C19 clopidogrel") == []
+
+    def test_parses_tavily_results_when_key_present(self, monkeypatch):
+        import requests
+
+        monkeypatch.setenv("TAVILY_API_KEY", "tvly-test-key")
+
+        class FakeResp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {
+                    "results": [
+                        {
+                            "title": "CPIC Guideline for CYP2C19 and Clopidogrel",
+                            "url": "https://cpicpgx.org/guidelines/guideline-for-clopidogrel-and-cyp2c19/",
+                            "content": "Poor metabolizers should receive alternative antiplatelet therapy.",
+                        }
+                    ]
+                }
+
+        monkeypatch.setattr(requests, "post", lambda *a, **kw: FakeResp())
+        res = search_tavily_clinical_guidelines("CYP2C19 clopidogrel")
+        assert len(res) == 1
+        assert res[0]["source"] == "Tavily Clinical Search"
+        assert "cpicpgx.org" in res[0]["url"]

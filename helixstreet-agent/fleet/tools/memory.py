@@ -1,14 +1,12 @@
-"""Memory Bank: persistent digital-twin and pipeline state in Firestore.
+"""Memory Bank: persistent digital-twin and pipeline state.
 
-Pipeline state is what lets the fleet go dormant while a DeepVariant Batch job
-runs for minutes (or hours) and resume with full context when the result file
-lands in GCS.
+Pipeline state is what lets the fleet go dormant while a DeepVariant / Parabricks
+job runs on Nebius Serverless GPU Jobs for minutes (or hours) and resume with full
+context when the result VCF lands in Nebius Object Storage.
 """
 import json
 
 from .. import clients, config
-
-from google.cloud import firestore as _fs
 
 
 def save_digital_twin(user_id: str, twin_json: str) -> str:
@@ -23,14 +21,14 @@ def save_digital_twin(user_id: str, twin_json: str) -> str:
         Confirmation message or error description.
     """
     try:
-        data = json.loads(twin_json)
+        data = twin_json if isinstance(twin_json, dict) else json.loads(twin_json)
     except json.JSONDecodeError as e:
         return f"ERROR: twin_json is not valid JSON: {e}"
     clients.firestore().collection(config.COLL_TWINS).document(user_id).set(
         {
             "twin": data,
-            "last_updated": _fs.SERVER_TIMESTAMP,
-            "status": "Processed by Helixstreet Fleet",
+            "last_updated": clients.SERVER_TIMESTAMP,
+            "status": "Processed by Helixstreet Fleet (Nebius Token Factory + Nemotron 3)",
         },
         merge=True,
     )
@@ -43,13 +41,13 @@ def update_pipeline_state(user_id: str, stage: str, details: str) -> str:
     Args:
         user_id: The pipeline user/sample identifier.
         stage: One of INTAKE_DONE, VARIANT_CALLING_RUNNING, ANALYSIS_DONE, TWIN_SAVED, FAILED.
-        details: Context needed to resume, e.g. the Batch job name or output URI.
+        details: Context needed to resume, e.g. the Nebius Serverless Job ID or output URI.
     """
     clients.firestore().collection(config.COLL_STATE).document(user_id).set(
         {
             "stage": stage,
             "details": details,
-            "updated": _fs.SERVER_TIMESTAMP,
+            "updated": clients.SERVER_TIMESTAMP,
         },
         merge=True,
     )
@@ -59,7 +57,8 @@ def update_pipeline_state(user_id: str, stage: str, details: str) -> str:
 def append_trace(user_id: str, entry: dict) -> None:
     """Framework helper (not an agent tool): appends a reasoning-trace entry."""
     clients.firestore().collection(config.COLL_STATE).document(user_id).set(
-        {"trace": _fs.ArrayUnion([entry]), "updated": _fs.SERVER_TIMESTAMP}, merge=True
+        {"trace": clients.ArrayUnion([entry]), "updated": clients.SERVER_TIMESTAMP},
+        merge=True,
     )
 
 

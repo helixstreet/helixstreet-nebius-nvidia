@@ -63,3 +63,11 @@ docs/*.mp3
 *.mp4
 *.wav
 docs/video-*.md
+
+# Local Nebius runtime data & credentials (never commit)
+.helixstreet_nebius_data/
+*.env
+*.key
+*.pem
+credentials*
+token.txt

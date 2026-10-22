@@ -1,4 +1,4 @@
-"""Tamper-evident, hash-chained audit ledger in Firestore.
+"""Tamper-evident, hash-chained audit ledger in the Memory Bank.
 
 Each entry embeds the SHA-256 hash of the previous entry, so any retroactive
 edit breaks the chain. This replaces an external blockchain with the same
@@ -7,10 +7,12 @@ provenance guarantee and zero demo risk. The dashboard re-verifies the chain.
 import datetime
 import hashlib
 import json
+import threading
 
 from .. import clients, config
 
 _HEAD_DOC = "_head"
+_AUDIT_LOCK = threading.Lock()
 
 
 def _entry_hash(prev_hash: str, payload: dict) -> str:
@@ -33,16 +35,39 @@ def record_audit_event(agent_name: str, action: str, details: str) -> dict:
     coll = db.collection(config.COLL_AUDIT)
     head_ref = coll.document(_HEAD_DOC)
 
-    transaction = db.transaction()
+    if config.STATE_BACKEND == "gcp":
+        from google.cloud import firestore as _fs
 
-    from google.cloud import firestore as _fs
+        transaction = db.transaction()
 
-    @_fs.transactional
-    def _append(tx):
-        head = head_ref.get(transaction=tx)
+        @_fs.transactional
+        def _append_gcp(tx):
+            head = head_ref.get(transaction=tx)
+            if head.exists:
+                seq = head.get("seq") + 1
+                prev_hash = head.get("hash")
+            else:
+                seq, prev_hash = 0, "GENESIS"
+            payload = {
+                "seq": seq,
+                "agent": agent_name,
+                "action": action,
+                "details": details,
+                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            }
+            h = _entry_hash(prev_hash, payload)
+            tx.set(coll.document(f"{seq:08d}"), {**payload, "prev_hash": prev_hash, "hash": h})
+            tx.set(head_ref, {"seq": seq, "hash": h})
+            return seq, h
+
+        seq, h = _append_gcp(transaction)
+        return {"status": "recorded", "seq": seq, "hash": h}
+
+    with _AUDIT_LOCK:
+        head = head_ref.get()
         if head.exists:
-            seq = head.get("seq") + 1
-            prev_hash = head.get("hash")
+            seq = int(head.get("seq", -1)) + 1
+            prev_hash = head.get("hash", "GENESIS")
         else:
             seq, prev_hash = 0, "GENESIS"
         payload = {
@@ -53,11 +78,9 @@ def record_audit_event(agent_name: str, action: str, details: str) -> dict:
             "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
         }
         h = _entry_hash(prev_hash, payload)
-        tx.set(coll.document(f"{seq:08d}"), {**payload, "prev_hash": prev_hash, "hash": h})
-        tx.set(head_ref, {"seq": seq, "hash": h})
-        return seq, h
+        coll.document(f"{seq:08d}").set({**payload, "prev_hash": prev_hash, "hash": h})
+        head_ref.set({"seq": seq, "hash": h})
 
-    seq, h = _append(transaction)
     return {"status": "recorded", "seq": seq, "hash": h}
 
 

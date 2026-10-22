@@ -9,6 +9,7 @@ dbSNP in BigQuery to assign them. All output is research-grade only.
 """
 import json
 import logging
+import os
 
 log = logging.getLogger(__name__)
 
@@ -104,7 +105,11 @@ def match_pgx_variants(variants_json: str) -> dict:
         plus counts of screened/matched variants. Research-grade only.
     """
     try:
-        variants = json.loads(variants_json)
+        if isinstance(variants_json, (list, dict)):
+            variants = variants_json.get("variants", variants_json) if isinstance(variants_json, dict) else variants_json
+        else:
+            parsed = json.loads(variants_json)
+            variants = parsed.get("variants", parsed) if isinstance(parsed, dict) else parsed
     except json.JSONDecodeError as e:
         return {"error": f"variants_json is not valid JSON: {e}"}
 
@@ -137,17 +142,68 @@ def match_pgx_variants(variants_json: str) -> dict:
     }
 
 
+def search_tavily_clinical_guidelines(query: str) -> list[dict]:
+    """Queries the Tavily Search API for live FDA drug labels, CPIC clinical
+    guidelines, and PharmGKB annotations when TAVILY_API_KEY is configured.
+
+    Args:
+        query: Search terms, e.g. 'CYP2C19 clopidogrel FDA label CPIC guideline'.
+
+    Returns:
+        List of clinical guideline / regulatory web results from Tavily.
+    """
+    import requests
+
+    api_key = os.getenv("TAVILY_API_KEY", "").strip()
+    if not api_key:
+        return []
+    try:
+        resp = requests.post(
+            "https://api.tavily.com/search",
+            json={
+                "api_key": api_key,
+                "query": f"{query} CPIC guideline FDA pharmacogenomic biomarker",
+                "search_depth": "basic",
+                "max_results": 3,
+                "include_domains": [
+                    "cpicpgx.org",
+                    "fda.gov",
+                    "ncbi.nlm.nih.gov",
+                    "pharmgkb.org",
+                ],
+            },
+            timeout=15,
+        )
+        resp.raise_for_status()
+        results = resp.json().get("results", [])
+        return [
+            {
+                "title": r.get("title"),
+                "url": r.get("url"),
+                "snippet": (r.get("content") or "")[:280],
+                "source": "Tavily Clinical Search",
+            }
+            for r in results
+        ]
+    except Exception as e:
+        log.warning("Tavily clinical search failed: %s", e)
+        return []
+
+
 def search_literature(query: str) -> dict:
-    """Searches Europe PMC for recent peer-reviewed literature on a topic.
+    """Searches Europe PMC (and Tavily Clinical Search when TAVILY_API_KEY is set)
+    for recent peer-reviewed literature and FDA/CPIC clinical guidelines.
 
     Args:
         query: Search terms, e.g. 'CYP2C19 clopidogrel poor metabolizer'.
 
     Returns:
-        Up to 3 recent papers with title, journal, year, and identifiers.
+        Up to 3 recent papers with title, journal, year, and identifiers, plus
+        optional Tavily clinical guideline results.
     """
     import requests
 
+    tavily_guidelines = search_tavily_clinical_guidelines(query)
     try:
         resp = requests.get(
             "https://www.ebi.ac.uk/europepmc/webservices/rest/search",
@@ -171,7 +227,21 @@ def search_literature(query: str) -> dict:
             }
             for r in results
         ]
-        return {"query": query, "source": "Europe PMC", "papers": papers}
+        out = {
+            "query": query,
+            "source": "Europe PMC + Tavily Clinical Search" if tavily_guidelines else "Europe PMC",
+            "papers": papers,
+        }
+        if tavily_guidelines:
+            out["tavily_clinical_guidelines"] = tavily_guidelines
+        return out
     except Exception as e:
         log.warning("Europe PMC search failed: %s", e)
+        if tavily_guidelines:
+            return {
+                "query": query,
+                "source": "Tavily Clinical Search",
+                "papers": [],
+                "tavily_clinical_guidelines": tavily_guidelines,
+            }
         return {"query": query, "error": f"literature search unavailable: {e}"}

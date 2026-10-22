@@ -1,138 +1,76 @@
 #!/usr/bin/env bash
-# Helixstreet fleet — one-shot Google Cloud deployment.
-# Idempotent: safe to re-run. Requires: gcloud (authenticated), a billing-enabled project.
+# Helixstreet Fleet — One-Shot Nebius AI Cloud & Nebius Token Factory Deployment
+# Deploys the Helixstreet Agent Fleet & Command Center onto Nebius Serverless Endpoints
+# and configures Nebius Serverless GPU Jobs (`gpu-l40s-a`) for DeepVariant / Parabricks.
 set -euo pipefail
 
-PROJECT_ID="${PROJECT_ID:-$(gcloud config get-value project)}"
-REGION="${REGION:-us-central1}"
-DATA_BUCKET="${DATA_BUCKET:-${PROJECT_ID}-data}"
-GEMINI_MODEL="${GEMINI_MODEL:-gemini-3.5-flash}"
-
-FLEET_SA="helixstreet-fleet"
-BATCH_SA="helixstreet-batch"
-UI_SA="helixstreet-ui"
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
+NEBIUS_BIN="${NEBIUS_BIN:-$(command -v nebius || echo "$HOME/.nebius/bin/nebius")}"
+NEBIUS_REGION="${NEBIUS_REGION:-eu-north1}"
+NEBIUS_PROJECT_ID="${NEBIUS_PROJECT_ID:-}"
+DATA_BUCKET="${DATA_BUCKET:-helixstreet-nebius-data}"
 
-echo "==> Project: ${PROJECT_ID}  Region: ${REGION}  Bucket: gs://${DATA_BUCKET}"
+# Three-tier NVIDIA Nemotron 3 models on Nebius Token Factory
+NEMOTRON_ULTRA_MODEL="${NEMOTRON_ULTRA_MODEL:-nvidia/Nemotron-3-Ultra-550b-a55b}"
+NEMOTRON_SUPER_MODEL="${NEMOTRON_SUPER_MODEL:-nvidia/nemotron-3-super-120b-a12b}"
+NEMOTRON_NANO_MODEL="${NEMOTRON_NANO_MODEL:-nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B}"
 
-echo "==> Enabling APIs"
-gcloud services enable --project "$PROJECT_ID" \
-  run.googleapis.com eventarc.googleapis.com batch.googleapis.com \
-  dlp.googleapis.com firestore.googleapis.com bigquery.googleapis.com \
-  storage.googleapis.com aiplatform.googleapis.com \
-  artifactregistry.googleapis.com cloudbuild.googleapis.com \
-  pubsub.googleapis.com logging.googleapis.com \
-  cloudtrace.googleapis.com modelarmor.googleapis.com
-
-echo "==> Firestore (native mode)"
-gcloud firestore databases create --project "$PROJECT_ID" --location "$REGION" \
-  2>/dev/null || echo "    (database already exists)"
-
-echo "==> Data bucket"
-gcloud storage buckets create "gs://${DATA_BUCKET}" \
-  --project "$PROJECT_ID" --location "$REGION" --uniform-bucket-level-access \
-  2>/dev/null || echo "    (bucket already exists)"
-
-echo "==> Service accounts (Agent Identity: least privilege per role)"
-for SA in "$FLEET_SA" "$BATCH_SA" "$UI_SA"; do
-  gcloud iam service-accounts create "$SA" --project "$PROJECT_ID" \
-    --display-name "Helixstreet ${SA}" 2>/dev/null || true
+for ENV_FILE in "$HOME/.nebius/credentials.env" "$HOME/.env" "${REPO_ROOT}/.env"; do
+  if [[ -f "$ENV_FILE" ]]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$ENV_FILE"
+    set +a
+  fi
 done
-FLEET_SA_EMAIL="${FLEET_SA}@${PROJECT_ID}.iam.gserviceaccount.com"
-BATCH_SA_EMAIL="${BATCH_SA}@${PROJECT_ID}.iam.gserviceaccount.com"
-UI_SA_EMAIL="${UI_SA}@${PROJECT_ID}.iam.gserviceaccount.com"
 
-grant() { gcloud projects add-iam-policy-binding "$PROJECT_ID" \
-  --member "serviceAccount:$1" --role "$2" --condition=None --quiet >/dev/null; }
-
-# Fleet agents: orchestrate, redact, dispatch Batch, query BQ, call Vertex,
-# export OpenTelemetry traces, screen inputs with Model Armor.
-for ROLE in roles/datastore.user roles/dlp.user roles/batch.jobsEditor \
-            roles/bigquery.jobUser roles/aiplatform.user roles/logging.logWriter \
-            roles/cloudtrace.agent roles/modelarmor.user; do
-  grant "$FLEET_SA_EMAIL" "$ROLE"
-done
-# DeepVariant VMs: read/write the data bucket, report to Batch, write logs.
-for ROLE in roles/batch.agentReporter roles/logging.logWriter; do
-  grant "$BATCH_SA_EMAIL" "$ROLE"
-done
-# Dashboard: read Firestore, read/write only the drop-zone bucket.
-grant "$UI_SA_EMAIL" roles/datastore.viewer
-
-gcloud storage buckets add-iam-policy-binding "gs://${DATA_BUCKET}" \
-  --member "serviceAccount:${FLEET_SA_EMAIL}" --role roles/storage.objectAdmin --quiet >/dev/null
-gcloud storage buckets add-iam-policy-binding "gs://${DATA_BUCKET}" \
-  --member "serviceAccount:${BATCH_SA_EMAIL}" --role roles/storage.objectAdmin --quiet >/dev/null
-gcloud storage buckets add-iam-policy-binding "gs://${DATA_BUCKET}" \
-  --member "serviceAccount:${UI_SA_EMAIL}" --role roles/storage.objectAdmin --quiet >/dev/null
-# Fleet must be able to attach the Batch VM SA to jobs it creates.
-gcloud iam service-accounts add-iam-policy-binding "$BATCH_SA_EMAIL" \
-  --project "$PROJECT_ID" --member "serviceAccount:${FLEET_SA_EMAIL}" \
-  --role roles/iam.serviceAccountUser --quiet >/dev/null
-
-# Hybrid model tier: intake runs on Gemma 3 via the Gemini API, which needs an
-# API key. Create it once (https://aistudio.google.com/apikey), then:
-#   printf '%s' "$YOUR_KEY" | gcloud secrets create gemma-api-key --data-file=-
-#   gcloud secrets add-iam-policy-binding gemma-api-key \
-#     --member "serviceAccount:${FLEET_SA_EMAIL}" --role roles/secretmanager.secretAccessor
-# The deploy auto-detects the secret; without it, intake falls back to Gemini.
-GEMMA_SECRET_ARGS=()
-if gcloud secrets describe gemma-api-key --project "$PROJECT_ID" >/dev/null 2>&1; then
-  GEMMA_SECRET_ARGS=(--update-secrets "GOOGLE_API_KEY=gemma-api-key:latest")
-  echo "==> Gemma hybrid tier: gemma-api-key secret found, mounting"
-else
-  echo "==> Gemma hybrid tier: no gemma-api-key secret; intake will use Gemini"
+if [[ -z "${NEBIUS_API_KEY:-}" ]]; then
+  echo "ERROR: NEBIUS_API_KEY is not set. Create one at https://tokenfactory.nebius.com/ and set it in .env"
+  exit 1
 fi
 
-echo "==> Deploying fleet service (Cloud Run)"
-gcloud run deploy helixstreet-fleet \
-  --project "$PROJECT_ID" --region "$REGION" \
-  --source "${REPO_ROOT}/helixstreet-agent" \
-  --service-account "$FLEET_SA_EMAIL" \
-  --no-allow-unauthenticated \
-  --memory 1Gi --timeout 900 --max-instances 3 --concurrency 1 \
-  "${GEMMA_SECRET_ARGS[@]}" \
-  --set-env-vars "GOOGLE_GENAI_USE_VERTEXAI=TRUE,GOOGLE_CLOUD_PROJECT=${PROJECT_ID},GOOGLE_CLOUD_LOCATION=global,BATCH_LOCATION=${REGION},DATA_BUCKET=${DATA_BUCKET},GEMINI_MODEL=${GEMINI_MODEL},BATCH_SERVICE_ACCOUNT=${BATCH_SA_EMAIL},MODEL_ARMOR_TEMPLATE=${MODEL_ARMOR_TEMPLATE:-}"
+echo "==> Helixstreet Nebius x NVIDIA Deployment"
+echo "    Region:          ${NEBIUS_REGION}"
+echo "    Bucket:          s3://${DATA_BUCKET}"
+echo "    Reasoning Tier:  ${NEMOTRON_ULTRA_MODEL} (Nebius Token Factory)"
+echo "    Steward Tier:    ${NEMOTRON_SUPER_MODEL} (Nebius Token Factory)"
+echo "    Gatekeeper Tier: ${NEMOTRON_NANO_MODEL} (Nebius Token Factory)"
 
-# Optional inline guardrails: create the Model Armor template once with
-#   gcloud model-armor templates create helixstreet-guard --location $REGION \
-#     --pi-and-jailbreak-filter-settings-enforcement=enabled \
-#     --pi-and-jailbreak-filter-settings-confidence-level=medium-and-above \
-#     --malicious-uri-filter-settings-enforcement=enabled \
-#     --basic-config-filter-enforcement=enabled
-# then redeploy with MODEL_ARMOR_TEMPLATE=projects/$PROJECT_ID/locations/$REGION/templates/helixstreet-guard
+if [[ -x "$NEBIUS_BIN" ]] && "$NEBIUS_BIN" iam whoami >/dev/null 2>&1; then
+  echo "==> Nebius CLI authenticated."
+  if [[ -z "$NEBIUS_PROJECT_ID" ]]; then
+    NEBIUS_PROJECT_ID="$("$NEBIUS_BIN" iam project list --format json 2>/dev/null | python3 -c "import sys,json; items=json.load(sys.stdin).get('items',[]); print(items[0]['metadata']['id'] if items else '')" || true)"
+  fi
+  echo "    Nebius Project ID: ${NEBIUS_PROJECT_ID:-auto}"
 
-echo "==> Deploying dashboard (Cloud Run)"
-gcloud run deploy helixstreet-dashboard \
-  --project "$PROJECT_ID" --region "$REGION" \
-  --source "${REPO_ROOT}/helixstreet-ui" \
-  --service-account "$UI_SA_EMAIL" \
-  --allow-unauthenticated \
-  --memory 512Mi --max-instances 2 \
-  --set-env-vars "GOOGLE_CLOUD_PROJECT=${PROJECT_ID},DATA_BUCKET=${DATA_BUCKET}"
+  if [[ -n "${CONTAINER_IMAGE:-}" && -n "$NEBIUS_PROJECT_ID" ]]; then
+    echo "==> Deploying Helixstreet Unified Serverless Endpoint on Nebius AI Cloud..."
+    "$NEBIUS_BIN" ai endpoint create \
+      --parent-id "$NEBIUS_PROJECT_ID" \
+      --name "helixstreet-fleet" \
+      --image "$CONTAINER_IMAGE" \
+      --platform "cpu-d3" \
+      --preset "4vcpu-16gb" \
+      --container-port 8080 \
+      --public \
+      --env "NEBIUS_API_KEY=${NEBIUS_API_KEY}" \
+      --env "NEBIUS_PROJECT_ID=${NEBIUS_PROJECT_ID}" \
+      --env "NEBIUS_REGION=${NEBIUS_REGION}" \
+      --env "DATA_BUCKET=${DATA_BUCKET}" \
+      --env "NEMOTRON_ULTRA_MODEL=${NEMOTRON_ULTRA_MODEL}" \
+      --env "NEMOTRON_SUPER_MODEL=${NEMOTRON_SUPER_MODEL}" \
+      --env "NEMOTRON_NANO_MODEL=${NEMOTRON_NANO_MODEL}"
+  else
+    echo "==> Tip: Set CONTAINER_IMAGE=<cr.eu-north1.nebius.cloud/.../helixstreet:latest> to deploy a remote Nebius Serverless Endpoint."
+  fi
+else
+  echo "==> Nebius CLI profile not yet initialized (run: ~/.nebius/bin/nebius profile create)."
+  echo "    Starting local Nebius Token Factory Fleet + Command Center services..."
+fi
 
-echo "==> Eventarc trigger (GCS object finalized -> fleet /eventarc)"
-GCS_SA="$(gcloud storage service-agent --project "$PROJECT_ID" | xargs)"
-grant "$GCS_SA" roles/pubsub.publisher
-grant "$FLEET_SA_EMAIL" roles/eventarc.eventReceiver
-gcloud run services add-iam-policy-binding helixstreet-fleet \
-  --project "$PROJECT_ID" --region "$REGION" \
-  --member "serviceAccount:${FLEET_SA_EMAIL}" --role roles/run.invoker --quiet >/dev/null
+echo "==> Seeding synthetic kinship genomes into Memory Bank vault..."
+"${REPO_ROOT}/helixstreet-agent/.venv/bin/python" "${REPO_ROOT}/scripts/seed_kinship_demo.py"
 
-gcloud eventarc triggers create helixstreet-uploads-trigger \
-  --project "$PROJECT_ID" --location "$REGION" \
-  --destination-run-service helixstreet-fleet \
-  --destination-run-region "$REGION" \
-  --destination-run-path /eventarc \
-  --event-filters "type=google.cloud.storage.object.v1.finalized" \
-  --event-filters "bucket=${DATA_BUCKET}" \
-  --service-account "$FLEET_SA_EMAIL" \
-  2>/dev/null || echo "    (trigger already exists)"
-
-echo "==> Staging DeepVariant quickstart reference genome"
-"${REPO_ROOT}/scripts/fetch_testdata.sh" "$DATA_BUCKET"
-
-echo
-echo "Done. Dashboard: $(gcloud run services describe helixstreet-dashboard \
-  --project "$PROJECT_ID" --region "$REGION" --format 'value(status.url)')"
-echo "Start a run from the dashboard sidebar, or: scripts/run_demo.sh <user-id>"
+echo "==> Ready! Start the Fleet API and Command Center:"
+echo "    1. Fleet API:      cd helixstreet-agent && .venv/bin/uvicorn main:app --host 0.0.0.0 --port 8080"
+echo "    2. Command Center: cd helixstreet-ui && ../helixstreet-agent/.venv/bin/streamlit run dashboard.py --server.port 8501"

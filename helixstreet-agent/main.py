@@ -1,14 +1,15 @@
-"""Helixstreet fleet service: Eventarc-driven entrypoint on Cloud Run.
+"""Helixstreet fleet service: Event-driven entrypoint on Nebius Serverless Endpoints.
 
-Event routing (deterministic) -> pipeline execution (agentic, Gemini via ADK):
+Event routing (deterministic) -> pipeline execution (agentic, NVIDIA Nemotron 3
+via Nebius Token Factory + Google ADK):
 
   uploads/{user_id}/*.bam                        -> ingest fleet (intake -> DeepVariant dispatch)
   uploads/{user_id}/*.vcf[.gz]                   -> analysis fleet (direct VCF, skips calling)
   results/{user_id}/deepvariant/output.vcf.gz    -> analysis fleet (async resume)
 
-Work happens INSIDE the request (Eventarc acks on our 200), so Cloud Run never
-CPU-throttles a detached background task. Idempotency: each (bucket, object,
-generation) is processed exactly once, tracked in Firestore.
+Work happens INSIDE the request, so serverless containers never throttle a
+detached background task. Idempotency: each (bucket, object, generation) is
+processed exactly once, tracked in the Memory Bank.
 """
 import base64
 import json
@@ -21,66 +22,84 @@ from fleet import clients, config
 from fleet.agents import analysis_pipeline, ingest_pipeline
 from fleet.registry import publish_registry
 from fleet.runner import run_pipeline
+from fleet.tools import zkproof_core as zk
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger("helixstreet.main")
 
-app = FastAPI(title="Helixstreet Fleet")
+app = FastAPI(title="Helixstreet Fleet — Nebius Token Factory + NVIDIA Nemotron 3")
 
 _BAM_RE = re.compile(r"^uploads/(?P<uid>[^/]+)/[^/]+\.bam$")
 _VCF_UPLOAD_RE = re.compile(r"^uploads/(?P<uid>[^/]+)/[^/]+\.vcf(\.gz)?$")
 _RESULT_RE = re.compile(r"^results/(?P<uid>[^/]+)/deepvariant/output\.vcf\.gz$")
 
 
-def _init_tracing():
-    """Exports ADK's OpenTelemetry spans (agent runs, LLM calls, tool calls)
-    to Cloud Trace, giving end-to-end reasoning-chain traces per pipeline."""
-    from opentelemetry import trace
-    from opentelemetry.exporter.cloud_trace import CloudTraceSpanExporter
-    from opentelemetry.sdk.resources import Resource
-    from opentelemetry.sdk.trace import TracerProvider
-    from opentelemetry.sdk.trace.export import BatchSpanProcessor
-
-    provider = TracerProvider(
-        resource=Resource.create({"service.name": "helixstreet-fleet"})
-    )
-    provider.add_span_processor(
-        BatchSpanProcessor(CloudTraceSpanExporter(project_id=config.PROJECT_ID))
-    )
-    trace.set_tracer_provider(provider)
+def _seed_default_kinship_vault():
+    """Seeds the three synthetic kinship demo genomes (kin-parent, kin-child,
+    kin-unrelated) into genome_vault if not already present."""
+    db = clients.firestore()
+    if db.collection(config.COLL_VAULT).document("kin-parent").get().exists:
+        return
+    panel = [f"rs-demo-{i:02d}" for i in range(12)]
+    genotypes = {
+        "kin-parent": ["0/0", "0/1", "1/1", "0/1", "0/0", "1/1", "0/1", "0/1", "1/1", "0/0", "0/1", "1/1"],
+        "kin-child": ["0/1", "0/1", "0/1", "0/0", "0/1", "0/1", "1/1", "0/1", "0/1", "0/1", "0/0", "0/1"],
+        "kin-unrelated": ["1/1", "0/1", "0/0", "0/1", "1/1", "0/0", "0/0", "1/1", "0/0", "0/1", "1/1", "0/0"],
+    }
+    for uid, gts in genotypes.items():
+        records = [
+            {"key": panel[i], "genotype": g, "salt": f"seed-{uid}-{i}"}
+            for i, g in enumerate(gts)
+        ]
+        root, _ = zk.build_commitment(records)
+        db.collection(config.COLL_VAULT).document(uid).set(
+            {"root": root, "records": records, "panel": panel, "synthetic": True}
+        )
 
 
 @app.on_event("startup")
 def startup():
     try:
-        _init_tracing()
-        log.info("OpenTelemetry -> Cloud Trace export active.")
-    except Exception as e:  # tracing is observability, never availability
-        log.warning("Tracing init skipped: %s", e)
-    try:
         n = publish_registry()
         log.info("Agent Registry published: %d agent cards.", n)
-    except Exception as e:  # never block serving on registry publication
+    except Exception as e:
         log.warning("Registry publication deferred: %s", e)
+    try:
+        _seed_default_kinship_vault()
+    except Exception as e:
+        log.warning("Kinship vault seed skipped: %s", e)
 
 
 @app.get("/healthz")
 def healthz():
     return {
         "status": "ok",
-        "reasoning_model": config.GEMINI_MODEL,
-        "intake_model": config.GEMMA_MODEL if config.GEMMA_ENABLED else config.GEMINI_MODEL,
-        "gemma_hybrid_tier": config.GEMMA_ENABLED,
+        "platform": "Nebius AI Cloud + Nebius Token Factory",
+        "token_factory_base_url": config.NEBIUS_BASE_URL,
+        "reasoning_model": config.NEMOTRON_ULTRA_MODEL,
+        "steward_model": config.NEMOTRON_SUPER_MODEL,
+        "intake_model": config.NEMOTRON_NANO_MODEL,
+        "variant_caller": "NVIDIA Clara Parabricks 4.3 (pbrun deepvariant)",
+        "parabricks_image": config.PARABRICKS_IMAGE,
+        "serverless_gpu_platform": f"{config.NEBIUS_GPU_PLATFORM} ({config.NEBIUS_GPU_PRESET})",
+        "api_key_configured": bool(config.NEBIUS_API_KEY),
     }
 
 
 def _parse_gcs_event(body: dict) -> tuple[str, str, str]:
-    """Accepts Eventarc CloudEvents (direct) or Pub/Sub-wrapped payloads."""
+    """Accepts direct CloudEvent payloads, Pub/Sub push envelopes, or S3 event notifications."""
     if "bucket" in body and "name" in body:  # direct CloudEvent data
         return body["bucket"], body["name"], str(body.get("generation", ""))
     if "message" in body:  # Pub/Sub push envelope
         data = json.loads(base64.b64decode(body["message"]["data"]).decode())
         return data["bucket"], data["name"], str(data.get("generation", ""))
+    if "Records" in body and body["Records"]:  # S3 / Nebius Object Storage notification
+        rec = body["Records"][0].get("s3", {})
+        bucket = rec.get("bucket", {}).get("name", config.DATA_BUCKET)
+        name = rec.get("object", {}).get("key", "")
+        gen = str(rec.get("object", {}).get("eTag") or rec.get("object", {}).get("sequencer") or "1")
+        if bucket and name:
+            return bucket, name, gen
     raise ValueError(f"Unrecognized event payload keys: {list(body)}")
 
 
@@ -106,7 +125,7 @@ async def handle_eventarc(request: Request):
         log.warning("Ignoring malformed event: %s", e)
         return {"status": "ignored", "reason": str(e)}
 
-    log.info("Event: gs://%s/%s (gen %s)", bucket, name, generation)
+    log.info("Storage Event: gs://%s/%s (gen %s)", bucket, name, generation)
 
     if m := _BAM_RE.match(name):
         pipeline, uid = ingest_pipeline, m["uid"]
@@ -134,8 +153,7 @@ async def handle_eventarc(request: Request):
     try:
         final = await run_pipeline(pipeline, uid, prompt)
     except Exception:
-        # Release the idempotency claim so Eventarc's retry can reprocess —
-        # otherwise a transient failure permanently swallows the event.
+        # Release the idempotency claim so retry can reprocess
         _event_ref(bucket, name, generation).delete()
         raise
     return {"status": "completed", "pipeline": pipeline.name, "user_id": uid, "summary": final}
