@@ -1,0 +1,8 @@
+{
+  "patient_name": "Jane Doe",
+  "date_of_birth": "01/01/1980",
+  "contact_email": "jane.doe@example.com",
+  "sample_id": "demo-na12878",
+  "assay": "WGS (demo slice chr20:10,000,000-10,010,000)",
+  "consent": "research-use-only, synthetic public sample NA12878"
+}

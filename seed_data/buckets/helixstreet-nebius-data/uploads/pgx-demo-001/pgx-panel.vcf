@@ -1,0 +1,11 @@
+##fileformat=VCFv4.2
+##source=HelixstreetPGxDemo
+##comment=Fully synthetic demo genotype for pharmacogenomic screening. Not derived from any real person. Research use only.
+##reference=GRCh38
+#CHROM	POS	ID	REF	ALT	QUAL	FILTER	INFO	FORMAT	DEMO_SAMPLE
+1	97450058	rs3918290	C	T	60	PASS	.	GT	0/1
+7	99672916	rs776746	T	C	60	PASS	.	GT	1/1
+10	94781859	rs4244285	G	A	60	PASS	.	GT	1/1
+10	94981296	rs1057910	A	C	60	PASS	.	GT	0/1
+12	21178615	rs4149056	T	C	60	PASS	.	GT	0/1
+16	31096368	rs9923231	C	T	60	PASS	.	GT	0/1

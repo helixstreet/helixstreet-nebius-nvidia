@@ -1,0 +1,1 @@
+{\n  \"patient_name\": \"Jane Doe\",\n  \"date_of_birth\": \"[DATE_OF_BIRTH]\",\n  \"contact_email\": \"[EMAIL_ADDRESS]\",\n  \"sample_id\": \"demo-na12878\",\n  \"assay\": \"WGS (demo slice chr20:10,000,000-10,010,000)\",\n  \"consent\": \"research-use-only, synthetic public sample NA12878\"\n}

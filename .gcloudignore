@@ -1,0 +1,10 @@
+.git
+.gitignore
+**/.venv
+**/venv
+**/__pycache__
+**/.pytest_cache
+*.pyc
+docs/*.mp3
+*.mp4
+*.wav

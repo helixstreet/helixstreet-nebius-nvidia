@@ -1,0 +1,8 @@
+{
+  "patient_name": "John Roe",
+  "date_of_birth": "02/02/1975",
+  "contact_email": "john.roe@example.com",
+  "sample_id": "pgx-demo-001",
+  "assay": "Targeted pharmacogenomics panel (synthetic demo genotype)",
+  "consent": "research-use-only, fully synthetic sample"
+}
