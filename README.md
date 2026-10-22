@@ -2,7 +2,7 @@
   <img src="docs/logo-with-text.svg" alt="Helixstreet" width="420">
 </p>
 
-<h3 align="center">An autonomous five-agent genomic fleet powered by NVIDIA Nemotron 3 on Nebius Token Factory & Nebius AI Cloud</h3>
+<h3 align="center">Helixstreet — Nemotron Genome Lab: An autonomous five-agent genomic & pharmacogenomics lab powered by NVIDIA Nemotron 3 & Clara Parabricks on Nebius Token Factory & Nebius AI Cloud</h3>
 
 <p align="center">
   <b>Nebius x NVIDIA Global AI Hackathon Submission — Best Apps and Agents Track</b><br>

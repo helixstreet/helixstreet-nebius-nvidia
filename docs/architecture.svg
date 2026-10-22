@@ -48,7 +48,7 @@
   <!-- Header Banner -->
   <rect x="28" y="20" width="1804" height="68" rx="12" fill="#131c33" stroke="#334155" stroke-width="1.5"/>
   <rect x="44" y="34" width="10" height="40" rx="4" fill="#76B900"/>
-  <text x="68" y="51" fill="#f8fafc" font-size="21" font-weight="700">Helixstreet — Autonomous 5-Agent Genomic Fleet Architecture (Nebius x NVIDIA Edition)</text>
+  <text x="68" y="51" fill="#f8fafc" font-size="21" font-weight="700">Helixstreet — Nemotron Genome Lab Architecture (Nebius x NVIDIA Edition)</text>
   <text x="68" y="73" fill="#94a3b8" font-size="13.5" font-weight="500">3-Tier NVIDIA Nemotron 3 (Ultra 550B · Super 120B · Nano 30B) on Nebius Token Factory  +  NVIDIA Clara Parabricks (pbrun deepvariant) on Nebius Serverless GPU Jobs</text>
 
   <!-- Legend Pills in Header -->

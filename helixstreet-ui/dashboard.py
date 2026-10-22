@@ -1,4 +1,4 @@
-"""Helixstreet — Autonomous Genomic Fleet Command Center (Nebius x NVIDIA Edition).
+"""Helixstreet — Nemotron Genome Lab (Nebius x NVIDIA Edition).
 
 Live views over the fleet's Memory Bank state: pipeline runs (with NVIDIA Nemotron 3
 agent reasoning traces), digital twins, minimal-disclosure Merkle proofs, the agent
@@ -36,7 +36,7 @@ FLEET_URL = os.getenv("FLEET_URL", "http://127.0.0.1:8080")
 UI_DIR = Path(__file__).resolve().parent
 
 st.set_page_config(
-    page_title="Helixstreet | Nebius x NVIDIA Genomic Fleet",
+    page_title="Helixstreet — Nemotron Genome Lab | Nebius x NVIDIA",
     layout="wide",
     page_icon=str(UI_DIR / "logo.png"),
 )
@@ -137,7 +137,7 @@ def start_demo_run(user_id: str) -> str:
 
 with st.container(horizontal=True, vertical_alignment="center"):
     st.image(str(UI_DIR / "logo.svg"), width=72)
-    st.title("Helixstreet — Autonomous Genomic Fleet")
+    st.title("Helixstreet — Nemotron Genome Lab")
 st.caption(
     f"**Nebius x NVIDIA Global AI Hackathon** · Project `{PROJECT_ID}` (`{NEBIUS_REGION}`) · "
     f"Bucket `s3://{DATA_BUCKET}` · **NVIDIA Nemotron 3 (Ultra 550B · Super 120B · Nano 30B)** "
