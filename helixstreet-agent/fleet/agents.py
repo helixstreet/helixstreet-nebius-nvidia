@@ -42,7 +42,7 @@ NEMOTRON_ULTRA = NebiusTokenFactoryLlm(model=config.NEMOTRON_ULTRA_MODEL)
 
 # Backward-compatible aliases
 INTAKE_MODEL = NEMOTRON_NANO
-GEMINI = NEMOTRON_ULTRA
+REASONING_LLM = NEMOTRON_ULTRA
 
 intake_agent = Agent(
     name="helixstreet_intake",

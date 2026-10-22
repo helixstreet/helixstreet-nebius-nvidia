@@ -193,7 +193,7 @@ Open [http://localhost:8501](http://localhost:8501) (or the live deployment at [
 
 ## What Was Significantly Updated During the Hackathon Submission Period
 
-Helixstreet was originally prototyped on Google Cloud (Vertex AI Gemini/Gemma, Cloud Run, Cloud Batch, Firestore, BigQuery, Cloud DLP). During the **Nebius x NVIDIA Global AI Hackathon**, we re-architected and migrated the entire system onto **open infrastructure powered by Nebius Token Factory, Nebius AI Cloud, NVIDIA Clara Parabricks, and NVIDIA Nemotron 3**:
+Helixstreet was originally an early cloud-locked prototype. During the **Nebius x NVIDIA Global AI Hackathon**, we re-architected and migrated the entire system onto **open infrastructure powered by Nebius Token Factory, Nebius AI Cloud, NVIDIA Clara Parabricks, and NVIDIA Nemotron 3**:
 
 1. **Custom Nebius Token Factory ADK Engine (`fleet/nebius_llm.py`)**: Built a full `BaseLlm` implementation for Google ADK targeting `https://api.tokenfactory.nebius.com/v1/` with OpenAI Chat Completions tool/function calling, schema normalization, automatic `tool_call_id` reconciliation, reasoning trace control (`enable_thinking=False` for sub-second tool turns), and exponential backoff.
 2. **Three-Tier NVIDIA Nemotron 3 Routing (`fleet/agents.py`, `fleet/config.py`, `fleet/registry.py`)**: Replaced proprietary models with right-sized NVIDIA open models on Nebius Token Factory:

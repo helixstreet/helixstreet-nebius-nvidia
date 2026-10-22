@@ -45,9 +45,6 @@ NEMOTRON_ULTRA_MODEL = os.getenv(
 REASONING_MODEL = os.getenv("REASONING_MODEL", NEMOTRON_ULTRA_MODEL)
 STEWARD_MODEL = os.getenv("STEWARD_MODEL", NEMOTRON_SUPER_MODEL)
 INTAKE_MODEL_NAME = os.getenv("INTAKE_MODEL", NEMOTRON_NANO_MODEL)
-GEMINI_MODEL = os.getenv("GEMINI_MODEL", REASONING_MODEL)
-GEMMA_MODEL = os.getenv("GEMMA_MODEL", INTAKE_MODEL_NAME)
-GEMMA_ENABLED = True
 
 # Storage & state backend ("local", "s3", or "gcp")
 STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "local")
@@ -88,7 +85,6 @@ REFERENCE_FASTA = os.getenv(
 )
 BATCH_SERVICE_ACCOUNT = os.getenv("BATCH_SERVICE_ACCOUNT", "")
 LOCATION = os.getenv("BATCH_LOCATION", NEBIUS_REGION)
-VERTEX_LOCATION = os.getenv("GOOGLE_CLOUD_LOCATION", "global")
 
 # 1000 Genomes Phase 3 reference table (BigQuery optional fallback)
 BQ_1KG_TABLE = os.getenv(
