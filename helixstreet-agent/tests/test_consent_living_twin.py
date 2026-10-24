@@ -176,3 +176,21 @@ def test_fastapi_consent_and_living_twin_endpoints():
     )
     assert r_fhir.status_code == 200
     assert r_fhir.json()["prescribed_drug"] == "escitalopram"
+
+    # Guideline update webhook (Stream B of the Living Twin)
+    r_gdl = client.post(
+        "/guidelines/update",
+        json={"patient_id": "pgx-demo-001", "drug": "clopidogrel", "use_nemotron": False},
+    )
+    assert r_gdl.status_code == 200
+    assert r_gdl.json()["trigger_type"] == "PROACTIVE_LIVING_TWIN_GUIDELINE_UPDATE_WATCHER"
+
+    # Federated cohort query endpoint
+    r_fed = client.post(
+        "/federated/cohort-query",
+        json={"gene": "CYP2C19", "drug": "clopidogrel"},
+    )
+    assert r_fed.status_code == 200
+    fed_data = r_fed.json()
+    assert fed_data["total_raw_genome_bytes_pooled"] == 0
+    assert len(fed_data["nodes"]) == 4

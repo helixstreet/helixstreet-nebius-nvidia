@@ -704,8 +704,9 @@ with tab_consent:
                 "Explain FHIR alert live with Nemotron 3 Super",
                 value=bool(fleet_config.NEBIUS_API_KEY),
             )
-            if st.button(
-                "📡 Simulate Incoming EHR FHIR R4 `MedicationRequest` (`POST /fhir/MedicationRequest`)",
+            b_w1, b_w2 = st.columns(2)
+            if b_w1.button(
+                "📡 Stream A: Simulate FHIR R4 `MedicationRequest` (`POST /fhir/MedicationRequest`)",
                 icon=":material/notification_important:",
                 type="primary",
                 use_container_width=True,
@@ -719,6 +720,20 @@ with tab_consent:
                         reason_text=fhir_drug_choice[3],
                     )
                     cv.ingest_fhir_medication_request(fhir_res, use_nemotron=fhir_nemotron)
+                    st.rerun()
+
+            if b_w2.button(
+                "📚 Stream B: Simulate CPIC/DPWG Guideline Update (`POST /guidelines/update`)",
+                icon=":material/update:",
+                use_container_width=True,
+            ):
+                with st.spinner("Living Twin re-evaluating static sealed genome against newly published CPIC/DPWG guideline…"):
+                    cv.ingest_guideline_update(
+                        patient_id="pgx-demo-001",
+                        gene="CYP2C19",
+                        drug=fhir_drug_choice[0],
+                        use_nemotron=fhir_nemotron,
+                    )
                     st.rerun()
 
             if alerts_list:
@@ -791,6 +806,35 @@ with tab_consent:
             st.caption(
                 "**Ontologies Linked:** " + " · ".join(KNOWLEDGE_GRAPH_METADATA["ontologies"])
             )
+
+    st.divider()
+
+    # --- FEDERATED ENCLAVE COHORT & POPULATION EQUITY AGGREGATOR ---
+    with st.container(border=True):
+        st.subheader(":material/diversity_3: Federated Enclave Cohort & Population Equity Aggregator (`POST /federated/cohort-query`)")
+        st.caption(
+            "Star-allele frequencies in standard PGx databases are heavily European-skewed (e.g., `CYP2C19*2/*3` loss-of-function "
+            "alleles are >2× more prevalent in East & South Asian populations). Helixstreet's consent-native enclave primitive allows "
+            "under-represented cohorts, hospitals, and community pharmacies to contribute **Ed25519-signed phenotype & RWE concordance statistics** "
+            "to federated pharmacovigilance **without a single raw genome ever being pooled (`0 bytes raw genome egress`)**."
+        )
+        if st.button(
+            "🌐 Run Federated Enclave Cohort Query Across 4 Sovereign Vault Nodes (`POST /federated/cohort-query`)",
+            icon=":material/public:",
+        ):
+            st.session_state["last_federated_result"] = cv.run_federated_cohort_query(
+                gene="CYP2C19", drug=st.session_state.get("selected_ask_drug", "clopidogrel")
+            )
+
+        fed_res = st.session_state.get("last_federated_result") or cv.run_federated_cohort_query(
+            gene="CYP2C19", drug="clopidogrel"
+        )
+        fm1, fm2, fm3, fm4 = st.columns(4)
+        fm1.metric("Consented Vaults Queried", f"{fed_res['total_consented_vaults_queried']:,}", "4 Federated Nodes", border=True)
+        fm2.metric("Actionable Carriers Caught", f"{fed_res['total_actionable_carriers']:,}", f"{fed_res['overall_actionable_rate_pct']}% overall", border=True)
+        fm3.metric("Pharmacist Concordance", f"{fed_res['mean_clinical_pharmacist_concordance_pct']}%", "Clinician Benchmark", border=True)
+        fm4.metric("Raw Genomes Pooled", "0 bytes", "100% Federated Enclave", border=True)
+        st.dataframe(pd.DataFrame(fed_res["nodes"]), hide_index=True, width="stretch")
 
 
 with tab_runs:

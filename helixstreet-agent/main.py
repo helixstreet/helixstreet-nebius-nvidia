@@ -185,6 +185,36 @@ async def record_closed_loop_rwe(request: Request):
     )
 
 
+@app.post("/guidelines/update")
+async def guideline_update_webhook(request: Request):
+    """Always-On Living Twin CPIC/DPWG Guideline Version Watcher endpoint."""
+    body = await request.json()
+    return cv.ingest_guideline_update(
+        patient_id=body.get("patient_id", "pgx-demo-001"),
+        gene=body.get("gene", "CYP2C19"),
+        drug=body.get("drug", "clopidogrel"),
+        new_guideline_version=body.get(
+            "new_guideline_version",
+            "CPIC/DPWG 2026.10 Harmonized Neurovascular & Antiplatelet Update",
+        ),
+        change_summary=body.get(
+            "change_summary",
+            "Harmonized CPIC & European DPWG Level-1A upgrade: extends mandatory CYP2C19 *2/*2 and *1/*2 clopidogrel avoidance to minor ischemic stroke / TIA.",
+        ),
+        use_nemotron=bool(body.get("use_nemotron", True)),
+    )
+
+
+@app.post("/federated/cohort-query")
+async def federated_cohort_query_endpoint(request: Request):
+    """Zero-Genome-Pooling Federated PGx & Equity Cohort Aggregator."""
+    body = await request.json()
+    return cv.run_federated_cohort_query(
+        gene=body.get("gene", "CYP2C19"),
+        drug=body.get("drug", "clopidogrel"),
+    )
+
+
 def _parse_gcs_event(body: dict) -> tuple[str, str, str]:
     """Accepts direct storage event payloads, Pub/Sub push envelopes, or S3 event notifications."""
     if "bucket" in body and "name" in body:  # direct storage event data
