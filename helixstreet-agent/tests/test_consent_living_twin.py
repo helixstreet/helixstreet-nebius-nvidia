@@ -226,3 +226,14 @@ def test_fastapi_consent_and_living_twin_endpoints():
     assert "VerifiableCredential" in vc_data["type"]
     assert vc_data["credentialSubject"]["rawGenomeBytesExposed"] == 0
     assert "proofValue" in vc_data["proof"]
+
+    # Stage 3 Programmable Biology Rescue: NVIDIA BioNeMo RFD4-Proteina endpoint
+    r_rfd4 = client.post(
+        "/bionemo/rfd4-design",
+        json={"gene": "DPYD", "patient_id": "pgx-demo-001", "reward_beam_width": 8},
+    )
+    assert r_rfd4.status_code == 200
+    rfd4_data = r_rfd4.json()
+    assert rfd4_data["model_id"] == "nvidia/RFD4-Proteina"
+    assert rfd4_data["raw_genome_bytes_exposed"] == 0
+    assert "ATOM      1" in rfd4_data["binder_pdb_block"]

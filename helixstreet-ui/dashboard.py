@@ -369,6 +369,7 @@ st.markdown(
             <span class="hx-pill hx-pill-emerald">✍️ ED25519 RFC-8032 ATTESTATIONS</span>
             <span class="hx-pill hx-pill-cyan">⚡ NEBIUS L40S PARABRICKS · aijob-e00p9xmknz4yphfvmm (6.05s)</span>
             <span class="hx-pill hx-pill-violet">🧠 NEMOTRON 3 · NANO 30B · SUPER 120B · ULTRA 550B</span>
+            <span class="hx-pill hx-pill-emerald">🧬 NVIDIA BIONEMO RFD4-PROTEINA · DE NOVO RESCUE</span>
             <span class="hx-pill hx-pill-amber">🗄️ NEBIUS S3 · s3://{DATA_BUCKET} ({NEBIUS_REGION})</span>
             <span class="hx-pill hx-pill-cyan">{'🔍 TAVILY CLINICAL & NCT MATCHER LIVE' if _tavily_key_ok else '🔍 TAVILY READY'}</span>
         </div>
@@ -1431,6 +1432,8 @@ with tab_runs:
 with tab_twins:
     from fleet.tools.pharmacogenomics import (
         PGX_STRUCTURES,
+        RFD4_RESCUE_TARGETS,
+        design_rfd4_proteina_rescue,
         fetch_openfda_drug_label,
         search_clinical_trials_tavily,
         search_literature,
@@ -1571,12 +1574,26 @@ with tab_twins:
                         ["Cartoon + Active-Site Pocket", "Molecular Surface + Pocket", "B-Factor Spectrum"],
                         horizontal=True,
                     )
+                    show_rfd4_overlay = st.toggle(
+                        "🧬 Dock NVIDIA BioNeMo `RFD4-Proteina` De Novo Rescue Mini-Protein (`#10b981` Emerald Helical Bundle)",
+                        value=True,
+                    )
                     s_meta = PGX_STRUCTURES[gene_choice]
+                    rfd4_bundle = design_rfd4_proteina_rescue(gene=gene_choice, patient_id=selected, reward_beam_width=8)
                     pdb_id = s_meta["pdb_id"]
                     resi_csv = ",".join(str(r) for r in s_meta["highlight_residues"])
                     surface_js = (
-                        "viewer.addSurface($3Dmol.SurfaceType.VDW, {opacity: 0.55, color: 'white'}, {hetflag: false});"
+                        "viewer.addSurface($3Dmol.SurfaceType.VDW, {opacity: 0.55, color: 'white'}, {model: 0, hetflag: false});"
                         if style_choice == "Molecular Surface + Pocket"
+                        else ""
+                    )
+                    rfd4_pdb_escaped = json.dumps(rfd4_bundle["binder_pdb_block"])
+                    rfd4_js = (
+                        f"""
+                        var rfd4Model = viewer.addModel({rfd4_pdb_escaped}, "pdb");
+                        viewer.setStyle({{model: rfd4Model}}, {{cartoon: {{color: "#10b981", opacity: 0.95}}, stick: {{radius: 0.18, colorscheme: "greenCarbon"}}}});
+                        """
+                        if show_rfd4_overlay
                         else ""
                     )
                     cartoon_color = "'spectrum'" if style_choice != "B-Factor Spectrum" else "{prop:'b', gradient:'roygb', min:15, max:70}"
@@ -1588,10 +1605,11 @@ with tab_twins:
                         var elem = document.getElementById("molviewer");
                         var viewer = $3Dmol.createViewer(elem, {{backgroundColor: "#0d1117"}});
                         $3Dmol.download("pdb:{pdb_id}", viewer, {{}}, function() {{
-                            viewer.setStyle({{hetflag: false}}, {{cartoon: {{color: {cartoon_color}, opacity: 0.88}}}});
+                            viewer.setStyle({{model: 0, hetflag: false}}, {{cartoon: {{color: {cartoon_color}, opacity: 0.85}}}});
                             {surface_js}
-                            viewer.addStyle({{resi: [{resi_csv}]}}, {{stick: {{radius: 0.28, colorscheme: "redCarbon"}}, sphere: {{scale: 0.38, color: "#ff4b4b"}}}});
-                            viewer.setStyle({{hetflag: true}}, {{stick: {{radius: 0.30, colorscheme: "cyanCarbon"}}}});
+                            viewer.addStyle({{model: 0, resi: [{resi_csv}]}}, {{stick: {{radius: 0.28, colorscheme: "redCarbon"}}, sphere: {{scale: 0.38, color: "#ff4b4b"}}}});
+                            viewer.setStyle({{model: 0, hetflag: true}}, {{stick: {{radius: 0.30, colorscheme: "cyanCarbon"}}}});
+                            {rfd4_js}
                             viewer.zoomTo();
                             viewer.spin("y", 0.35);
                             viewer.render();
@@ -1601,7 +1619,10 @@ with tab_twins:
                     """
                     components.html(html_3dmol, height=405)
                     st.markdown(f"**PDB `{pdb_id}` — {s_meta['title']}**")
-                    st.caption(f":material/science: **Structural Variant Mechanism:** {s_meta['variant_note']}")
+                    st.caption(
+                        f":material/science: **Structural Variant Mechanism:** {s_meta['variant_note']}  \n"
+                        f":green-badge[RFD4-Proteina Candidate: {rfd4_bundle['candidate_id']} ({rfd4_bundle['length_aa']} aa · pLDDT {rfd4_bundle['plddt']} · ipTM {rfd4_bundle['iptm']})]"
+                    )
 
             with col_fda:
                 with st.container(border=True):
@@ -1673,6 +1694,70 @@ with tab_twins:
                             st.markdown(
                                 f"- **`{t_item.get('nct_id')}`** [{t_item.get('title')}]({t_item.get('url')}) — {t_item.get('snippet','')}"
                             )
+
+            with st.container(border=True):
+                st.subheader(
+                    f":material/biotech: Stage 3 Programmable Biology Rescue · NVIDIA BioNeMo `RFD4-Proteina` (`{rfd4_bundle['candidate_id']}`)"
+                )
+                st.caption(
+                    "**The Full 3-Stage NVIDIA Stack (`Parabricks` → `Nemotron 3` → `BioNeMo RFD4-Proteina`):** "
+                    "When a patient carries a structural loss-of-function pharmacogene variant where no standard small-molecule substitute exists "
+                    "(or an acute biologic antidote/chaperone is needed), Helixstreet runs **`nvidia/RFD4-Proteina`** (`nvcr.io/nim/ipd/rfd4-proteina:latest`, "
+                    "co-developed by **NVIDIA Research BioNeMo** & **UW Institute for Protein Design**) inside the zero-egress enclave to "
+                    "**jointly co-design the 3D all-atom structure and amino-acid sequence** conditioned on the patient's mutant pocket."
+                )
+                rm1, rm2, rm3, rm4, rm5 = st.columns(5)
+                rm1.metric("pLDDT Confidence", f"{rfd4_bundle['plddt']}", "All-Atom Flow Matching", border=True)
+                rm2.metric("Interface ipTM", f"{rfd4_bundle['iptm']}", "Target-Binder Complex", border=True)
+                rm3.metric("Pocket Cα RMSD", f"{rfd4_bundle['pocket_rmsd_angstrom']} Å", f"PDB {rfd4_bundle['target_pdb_id']} Motif", border=True)
+                rm4.metric("Predicted ΔG_bind", f"{rfd4_bundle['delta_g_bind_kcal_mol']} kcal/mol", f"ΔΔG {rfd4_bundle['fold_stabilization_ddg_kcal_mol']} kcal/mol", border=True)
+                rm5.metric("Raw Genome Egress", f"{rfd4_bundle['raw_genome_bytes_exposed']} bytes", "Ed25519 Signed", border=True)
+
+                r_col1, r_col2 = st.columns([1.25, 1])
+                with r_col1:
+                    st.markdown(
+                        f"**Therapeutic Modality:** {rfd4_bundle['therapeutic_modality']}  \n"
+                        f"**Patient Variant Target:** `{rfd4_bundle['patient_variant']}`  \n"
+                        f"**Clinical Indication:** {rfd4_bundle['clinical_indication']}  \n"
+                        f"**Molecular Conditioning:** {rfd4_bundle['conditioning_context']}"
+                    )
+                    st.markdown(f"**Jointly Co-Designed Sequence (`{rfd4_bundle['length_aa']} aa`, FASTA):**")
+                    st.code(
+                        f">{rfd4_bundle['candidate_id']} | gene={rfd4_bundle['gene']} | target=PDB:{rfd4_bundle['target_pdb_id']} | model=nvidia/RFD4-Proteina | pLDDT={rfd4_bundle['plddt']} | ipTM={rfd4_bundle['iptm']}\n"
+                        f"{rfd4_bundle['co_designed_sequence']}",
+                        language="text",
+                    )
+                with r_col2:
+                    st.markdown("**Reward-Guided Test-Time Search Trajectory (`Beam Width = 8`)**")
+                    st.dataframe(
+                        pd.DataFrame(rfd4_bundle["reward_guided_beam_search"]),
+                        hide_index=True,
+                        width="stretch",
+                    )
+                    dl_c1, dl_c2 = st.columns(2)
+                    dl_c1.download_button(
+                        f"📥 Download {rfd4_bundle['candidate_id']}.pdb",
+                        data=rfd4_bundle["binder_pdb_block"],
+                        file_name=f"{rfd4_bundle['candidate_id']}.pdb",
+                        mime="chemical/x-pdb",
+                        use_container_width=True,
+                        key=f"dl_rfd4_pdb_{gene_choice}",
+                    )
+                    dl_c2.download_button(
+                        "📥 Signed RFD4 Manifest (.json)",
+                        data=json.dumps({k: v for k, v in rfd4_bundle.items() if k != "binder_pdb_block"}, indent=2),
+                        file_name=f"{rfd4_bundle['candidate_id']}-signed.json",
+                        mime="application/json",
+                        use_container_width=True,
+                        key=f"dl_rfd4_json_{gene_choice}",
+                    )
+                with st.expander(":material/terminal: **NVIDIA BioNeMo NIM (`nvcr.io/nim/ipd/rfd4-proteina:latest`) & Nebius L40S GPU Dispatch Spec**"):
+                    st.code(rfd4_bundle["nebius_nim_job_command"], language="bash")
+                    st.caption(
+                        f"Model Weights: `{rfd4_bundle['model_id']}` ([Hugging Face]({rfd4_bundle['huggingface_repo']})) · "
+                        f"Codebase: [RosettaCommons/RFD4-Proteina]({rfd4_bundle['github_repo']}) · "
+                        f"Ed25519 Signature: `{rfd4_bundle['signature_ed25519'][:36]}…`"
+                    )
 
         with sub_twin_copilot:
             with st.container(border=True):

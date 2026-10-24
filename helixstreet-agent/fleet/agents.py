@@ -28,6 +28,7 @@ from .tools.gcs import fingerprint_gcs_object, read_gcs_text, write_gcs_text
 from .tools.genomics import annotate_with_1000genomes, parse_vcf
 from .tools.memory import get_pipeline_state, save_digital_twin, update_pipeline_state
 from .tools.pharmacogenomics import (
+    design_rfd4_proteina_rescue,
     fetch_cpic_diplotype_details,
     match_pgx_variants,
     search_clinical_trials_tavily,
@@ -173,6 +174,7 @@ changes; always defer to clinicians.""",
         fetch_cpic_diplotype_details,
         search_literature,
         search_clinical_trials_tavily,
+        design_rfd4_proteina_rescue,
         record_audit_event,
     ],
 )

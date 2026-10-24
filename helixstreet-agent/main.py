@@ -91,6 +91,8 @@ def healthz():
         "pricing_per_1m_usd": config.NEBIUS_MODEL_PRICING,
         "variant_caller": "NVIDIA Clara Parabricks 4.3 (pbrun deepvariant)",
         "parabricks_image": config.PARABRICKS_IMAGE,
+        "bionemo_protein_design_model": "nvidia/RFD4-Proteina",
+        "bionemo_nim_image": "nvcr.io/nim/ipd/rfd4-proteina:latest",
         "serverless_gpu_platform": f"{config.NEBIUS_GPU_PLATFORM} ({config.NEBIUS_GPU_PRESET})",
         "parabricks_execution_mode": (
             "nebius_serverless_gpu" if config.NEBIUS_PARENT_ID else "parabricks_na12878_replay_fixture"
@@ -239,6 +241,21 @@ async def twin_timeline_endpoint(patient_id: str):
 async def wallet_vc_endpoint(patient_id: str):
     """W3C Verifiable Credential & EHDS 2027 Sovereign Genome Wallet Pass."""
     return cv.build_w3c_verifiable_credential(patient_id=patient_id)
+
+
+@app.post("/bionemo/rfd4-design")
+async def bionemo_rfd4_design_endpoint(request: Request):
+    """Stage 3 Programmable Biology Rescue: NVIDIA BioNeMo RFD4-Proteina
+    (`nvidia/RFD4-Proteina` / `nvcr.io/nim/ipd/rfd4-proteina:latest`)
+    joint sequence-and-all-atom structure co-design."""
+    from fleet.tools.pharmacogenomics import design_rfd4_proteina_rescue
+
+    body = await request.json()
+    return design_rfd4_proteina_rescue(
+        gene=body.get("gene", "DPYD"),
+        patient_id=body.get("patient_id", "pgx-demo-001"),
+        reward_beam_width=int(body.get("reward_beam_width", 8)),
+    )
 
 
 def _parse_gcs_event(body: dict) -> tuple[str, str, str]:

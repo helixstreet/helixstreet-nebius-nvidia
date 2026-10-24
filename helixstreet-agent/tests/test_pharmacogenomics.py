@@ -148,3 +148,18 @@ class TestOpenFDALabelAndStructures:
         label = fetch_openfda_drug_label("clopidogrel")
         assert label["drug"] == "clopidogrel"
         assert "CYP2C19" in label["boxed_warning"]
+
+    def test_rfd4_proteina_rescue_design_covers_all_six_pharmacogenes(self):
+        from fleet.tools.pharmacogenomics import RFD4_RESCUE_TARGETS, design_rfd4_proteina_rescue
+
+        assert set(RFD4_RESCUE_TARGETS.keys()) == {"DPYD", "CYP2C19", "CYP2C9", "VKORC1", "CYP3A5", "SLCO1B1"}
+        res = design_rfd4_proteina_rescue(gene="DPYD", patient_id="pgx-demo-001", reward_beam_width=8)
+        assert res["model_id"] == "nvidia/RFD4-Proteina"
+        assert res["nim_container"] == "nvcr.io/nim/ipd/rfd4-proteina:latest"
+        assert res["raw_genome_bytes_exposed"] == 0
+        assert res["plddt"] > 90.0
+        assert res["iptm"] > 0.80
+        assert "ATOM      1" in res["binder_pdb_block"]
+        assert "HELIX    1" in res["binder_pdb_block"]
+        assert len(res["reward_guided_beam_search"]) == 4
+        assert len(res["signature_ed25519"]) == 128
