@@ -23,12 +23,15 @@ from fleet import clients, config
 from fleet.agents import analysis_pipeline, ingest_pipeline
 from fleet.registry import publish_registry
 from fleet.runner import run_pipeline
+from fleet.tools import consent_vault as cv
 from fleet.tools import zkproof_core as zk
 
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger("helixstreet.main")
 
-app = FastAPI(title="Helixstreet — Nemotron Genome Lab (Nebius Token Factory + NVIDIA Nemotron 3)")
+app = FastAPI(
+    title="Helixstreet — The Consent-Native Pharmacogenomics Layer (Nebius Token Factory + NVIDIA Nemotron 3)"
+)
 
 _BAM_RE = re.compile(r"^uploads/(?P<uid>[^/]+)/[^/]+\.bam$")
 _VCF_UPLOAD_RE = re.compile(r"^uploads/(?P<uid>[^/]+)/[^/]+\.vcf(\.gz)?$")
@@ -69,12 +72,17 @@ def startup():
         _seed_default_kinship_vault()
     except Exception as e:
         log.warning("Kinship vault seed skipped: %s", e)
+    try:
+        cv.seed_living_twin_defaults()
+    except Exception as e:
+        log.warning("Living twin defaults seed skipped: %s", e)
 
 
 @app.get("/healthz")
 def healthz():
     return {
         "status": "ok",
+        "category": "First Consent-Native Pharmacogenomics Layer (0 Raw-Genome Bytes Exposed)",
         "platform": "Nebius AI Cloud + Nebius Token Factory",
         "token_factory_base_url": config.NEBIUS_BASE_URL,
         "reasoning_model": config.NEMOTRON_ULTRA_MODEL,
@@ -87,9 +95,94 @@ def healthz():
         "parabricks_execution_mode": (
             "nebius_serverless_gpu" if config.NEBIUS_PARENT_ID else "parabricks_na12878_replay_fixture"
         ),
+        "enclave_public_key_ed25519": cv.get_enclave_public_key_hex(),
         "api_key_configured": bool(config.NEBIUS_API_KEY),
         "tavily_configured": bool(os.getenv("TAVILY_API_KEY", "").strip()),
     }
+
+
+@app.post("/ask")
+async def ask_pharmacogenomics(request: Request):
+    """Clinician / Pharmacy Consent-Gated Pharmacogenomic Attestation API.
+    Checks active standing consent BEFORE running any agent or reading the vault."""
+    body = await request.json()
+    return cv.ask_pharmacogenomic_attestation(
+        patient_id=body.get("patient_id", "pgx-demo-001"),
+        requester=body.get("requester", "hirsch-pharmacy-basel"),
+        purpose=body.get("purpose", "drug_safety_dispensing_check"),
+        drug=body.get("drug", "clopidogrel"),
+        question=body.get("question", ""),
+        use_nemotron=bool(body.get("use_nemotron", True)),
+    )
+
+
+@app.post("/verify")
+async def verify_attestation_endpoint(request: Request):
+    """Cryptographically verifies an Ed25519-signed phenotype attestation bundle."""
+    body = await request.json()
+    return cv.verify_signed_attestation(body)
+
+
+@app.get("/consents/{patient_id}")
+def get_patient_consents(patient_id: str):
+    return {
+        "patient_id": patient_id,
+        "consents": cv.list_consents(patient_id),
+        "receipts": cv.list_receipts(patient_id),
+    }
+
+
+@app.post("/consents/grant")
+async def grant_patient_consent(request: Request):
+    body = await request.json()
+    return cv.grant_consent(
+        patient_id=body.get("patient_id", "pgx-demo-001"),
+        requester=body.get("requester", "hirsch-pharmacy-basel"),
+        requester_name=body.get("requester_name", "Hirsch Apotheke Basel (Community Pharmacy)"),
+        purpose=body.get("purpose", "drug_safety_dispensing_check"),
+        consent_id=body.get("consent_id", "cns-pharm-basel-001"),
+    )
+
+
+@app.post("/consents/revoke")
+async def revoke_patient_consent(request: Request):
+    body = await request.json()
+    return cv.revoke_consent(
+        patient_id=body.get("patient_id", "pgx-demo-001"),
+        consent_id=body.get("consent_id", "cns-pharm-basel-001"),
+        reason=body.get("reason", "Patient 1-tap revocation via Helixstreet API"),
+    )
+
+
+@app.post("/fhir/MedicationRequest")
+async def fhir_medication_request_webhook(request: Request):
+    """Always-On Living Twin HL7 FHIR R4 MedicationRequest Watcher endpoint."""
+    body = await request.json()
+    if body.get("resourceType") != "MedicationRequest":
+        body = cv.build_fhir_medication_request(
+            patient_id=body.get("patient_id", "pgx-demo-001"),
+            drug=body.get("drug", "escitalopram"),
+            dose_text=body.get("dose_text", "20 mg orally once daily"),
+            prescriber=body.get("prescriber", "EHR Prescribing Clinician"),
+        )
+    return cv.ingest_fhir_medication_request(
+        fhir_resource=body,
+        use_nemotron=bool(body.get("use_nemotron", True)),
+    )
+
+
+@app.post("/rwe/outcome")
+async def record_closed_loop_rwe(request: Request):
+    """Consented Closed-Loop Real-World Evidence (RWE) outcome endpoint."""
+    body = await request.json()
+    return cv.record_rwe_outcome(
+        patient_id=body.get("patient_id", "pgx-demo-001"),
+        alert_id=body.get("alert_id", "alt-seed-escitalopram-001"),
+        drug_originally_ordered=body.get("drug_originally_ordered", "escitalopram 20 mg/day"),
+        action_taken=body.get("action_taken", "Dose reduced by 50% to <=10 mg/day per CPIC Level 1A"),
+        adr_prevented=bool(body.get("adr_prevented", True)),
+        clinician_notes=body.get("clinician_notes", ""),
+    )
 
 
 def _parse_gcs_event(body: dict) -> tuple[str, str, str]:

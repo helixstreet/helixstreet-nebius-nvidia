@@ -358,13 +358,12 @@ def token_factory():
 
 
 @lru_cache(maxsize=1)
-def state_store() -> LocalDocumentClient:
+def firestore() -> LocalDocumentClient:
     return LocalDocumentClient()
 
 
-@lru_cache(maxsize=1)
-def firestore() -> LocalDocumentClient:
-    return state_store()
+def state_store() -> LocalDocumentClient:
+    return firestore()
 
 
 @lru_cache(maxsize=1)

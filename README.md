@@ -2,7 +2,8 @@
   <img src="docs/logo-with-text.svg" alt="Helixstreet" width="420">
 </p>
 
-<h3 align="center">Helixstreet — Nemotron Genome Lab: An autonomous five-agent genomic & pharmacogenomics lab powered by NVIDIA Nemotron 3 & Clara Parabricks on Nebius Token Factory & Nebius AI Cloud</h3>
+<h3 align="center">Helixstreet — The Consent-Native Pharmacogenomics Layer</h3>
+<p align="center"><i>Turns a person's genome into a lifelong, provable, revocable source of drug-safety answers — without the genome ever leaving their control.</i></p>
 
 <p align="center">
   <b>Nebius x NVIDIA Global AI Hackathon Submission — Best Apps and Agents Track</b><br>
@@ -12,7 +13,29 @@
 
 ---
 
-**Helixstreet — Nemotron Genome Lab** is an event-driven, five-agent genomic analysis and pharmacogenomics fleet built on open infrastructure with **Nebius Token Factory** and **Nebius AI Cloud**. Drop an aligned sequencing file (`.bam`) or clinical variant file (`.vcf`) into Object Storage; with no human in the loop, the fleet:
+> **Executive Summary:** **Helixstreet is the first consent-native pharmacogenomics platform. A patient's genome stays sealed in their own vault; Helixstreet's multi-agent system computes guideline-grounded phenotype attestations inside a confidential enclave and releases only a signed, auditable answer — *"CYP2C19 poor metabolizer, CPIC 2024, evidence level 1A"* — to the clinician, pharmacy or AI that asked. Every access is purpose-bound, time-limited and recorded on a tamper-evident ledger. The twin watches new prescriptions and guideline updates for life, flagging actionable interactions months before harm.**
+
+---
+
+## Why Consent-Native Pharmacogenomics?
+
+Roughly **95% of people carry at least one actionable pharmacogenomic variant**, and adverse drug reactions are a leading cause of hospital admission in Europe, yet fewer than a few percent of patients are ever tested — because a PGx result today is a **one-time PDF locked in one lab**, and **genomic data can never be rotated like a password**.
+
+**Helixstreet** combines two tightly integrated layers on **Nebius Token Factory** and **Nebius AI Cloud**:
+
+### Layer A — The Consent-Native Living Twin & Enclave Attestation Gate (`consent_vault.py` + `knowledge_graph.py`)
+1. **Patient Genome Vault & Purpose-Bound Standing Consents (`0 Bytes Raw Genome Egress`):** Patients manage standing consents (e.g., `cns-pharm-basel-001` for *Hirsch Apotheke Basel*) under **EU GDPR Art. 9(2)(a)**, **Swiss nFADP Art. 6**, and **EHDS 2027**.
+2. **Pre-Agent Consent Gate (`POST /ask`):** Checks `(patient_id, requester, purpose, expires_at, status == ACTIVE)` **before** any agent runs or any vault genotype is read.
+3. **Ed25519-Signed Phenotype Attestation + Corti-Grade Evidence:** Computes the metabolizer phenotype inside the enclave (`CYP2C19 *2/*2 → Poor Metabolizer`), traverses the **Helixstreet Pharmacogenomic Knowledge Graph** (`CPIC + DPWG + PharmGKB + PharmVar + FDA/EMA/Swissmedic`), and returns a **1 KB Ed25519-signed attestation** containing the primary recommendation, **ranked therapeutic alternatives** (`#1 Prasugrel`, `#2 Ticagrelor`), and the **verbatim CPIC/DPWG citation (`Evidence Level 1A`)**, explained by **NVIDIA Nemotron 3** under a strict zero-hallucination system prompt.
+4. **Tamper-Evident Consent & Access Receipt Ledger + Standalone CLI Verifier:** Writes a hash-chained receipt (`attestation_sha256`, `raw_genome_bytes_exposed: 0`) verifiable in one click in the UI or via:
+   ```bash
+   python scripts/verify_attestation.py
+   ```
+5. **One-Tap Consent Revocation & Provable Refusal Receipt (`POST /consents/revoke`):** Revoking consent immediately blocks subsequent queries at the Consent Gate (`vault_accessed: False`, `agent_invoked: False`) and emits an Ed25519-signed **`REFUSED_CONSENT_REVOKED`** receipt.
+6. **Always-On HL7 FHIR R4 `MedicationRequest` Prescription Watcher (`POST /fhir/MedicationRequest`) & Closed-Loop RWE (`POST /rwe/outcome`):** Months or years after sequencing, incoming EHR prescriptions (e.g., **Escitalopram 20 mg/day**) are checked unprompted against persistent phenotype memory, intercepting adverse drug reactions and recording consented **Closed-Loop Real-World Evidence (RWE)** outcomes (`adr_prevented = True`).
+
+### Layer B — The Autonomous 5-Agent Genomic & Parabricks Fleet (`agents.py`)
+Drop an aligned sequencing file (`.bam`) or clinical variant file (`.vcf`) into Object Storage; with no human in the loop, the fleet:
 
 1. **Screens and de-identifies** the accompanying patient manifest via `deidentify_manifest(manifest_uri)` (prompt-injection screening + HIPAA Safe Harbor PII redaction executed in Python so **raw PII never enters any LLM prompt or context window**) and **cryptographically fingerprints** the raw genome (`SHA-256`, `CRC32C`, `MD5`) using **Tier 1: NVIDIA Nemotron 3 Nano** (`nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`).
 2. **Dispatches NVIDIA Clara Parabricks (`pbrun deepvariant`)** asynchronously (live on **Nebius Serverless GPU Jobs** `gpu-l40s-a` with `--volume s3://<bucket>:/mnt/nebius` when `NEBIUS_PARENT_ID` is attached, or replaying the verified 24-variant GIAB NA12878 `chr20:10,000,000-10,010,000` callset fixture in standalone/container mode), persists pipeline state to the **Memory Bank**, and goes dormant — burning zero inference tokens while heavy variant calling executes.
@@ -91,7 +114,7 @@ Object Storage (s3://<bucket>)
 ├── Dockerfile                               # Unified container for Serverless Endpoints / Cloud Run
 ├── requirements.txt                         # Unified Python dependencies (Python 3.11 / 3.12)
 ├── helixstreet-agent/                       # FastAPI + Google ADK fleet service
-│   ├── main.py                              # /storage-event (alias /eventarc) router + /healthz
+│   ├── main.py                              # /ask, /verify, /consents/*, /fhir/MedicationRequest, /rwe/outcome, /storage-event
 │   ├── fleet/
 │   │   ├── nebius_llm.py                    # Nebius Token Factory BaseLlm adapter (OpenAI API + tool calling)
 │   │   ├── config.py                        # Nebius Token Factory pricing & Serverless AI configuration
@@ -100,6 +123,8 @@ Object Storage (s3://<bucket>)
 │   │   ├── runner.py                        # ADK runner + per-step latency/token/cost telemetry mirror
 │   │   ├── registry.py                      # Agent Registry cards published on startup
 │   │   └── tools/
+│   │       ├── consent_vault.py             # Consent Gate, Ed25519 Enclave Signer, FHIR R4 Watcher & Closed-Loop RWE
+│   │       ├── knowledge_graph.py           # CPIC + DPWG + PharmGKB + PharmVar + FDA/EMA/Swissmedic Knowledge Graph
 │   │       ├── compliance.py                # deidentify_manifest (zero-LLM-exposure HIPAA PII scrubber)
 │   │       ├── variant_calling.py           # Nebius Serverless GPU Job submission + GIAB NA12878 replay fixture
 │   │       ├── genomics.py                  # VCF parser + Ensembl 1000G Phase 3 AFR/AMR/EAS/EUR/SAS frequencies
@@ -108,12 +133,13 @@ Object Storage (s3://<bucket>)
 │   │       ├── memory.py                    # Memory Bank + deterministic Merkle vault verification
 │   │       ├── audit.py                     # SHA-256 hash-chained tamper-evident audit ledger
 │   │       └── gcs.py                       # Storage text & SHA-256 fingerprinting helpers
-│   └── tests/                               # 64 automated unit & integration tests (pytest)
+│   └── tests/                               # 67 automated unit & integration tests (pytest)
 ├── helixstreet-ui/
-│   └── dashboard.py                         # Streamlit Command Center (6 live tabs + 3Dmol.js PDB viewer + Live Copilot + .md export)
+│   └── dashboard.py                         # Streamlit Command Center (7 live tabs + Living Twin & Consent Gate + 3Dmol.js)
 ├── infra/
 │   └── deploy.sh                            # Deployment script
 └── scripts/
+    ├── verify_attestation.py                # Standalone CLI verifier for Ed25519 signatures & SHA-256 consent receipts
     ├── run_demo.sh                          # Triggers Act 1: NA12878 BAM -> Ingest -> Variant Calling -> Analysis
     ├── run_pgx_demo.sh                      # Triggers Act 2: Synthetic PGx VCF -> CPIC + Europe PMC + Tavily
     └── seed_kinship_demo.py                 # Seeds parent / child / unrelated sealed genomes
