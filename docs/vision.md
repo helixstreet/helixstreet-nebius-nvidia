@@ -1,69 +1,28 @@
-# The Helixstreet vision — "Sequenced once. Trusted for life. Worked by agents forever."
+# The Helixstreet Vision — "Sequenced Once. Sealed in Your Vault. Answering Drug-Safety Questions for Life."
 
-## The three facts the vision stands on (all real, all citable)
+## The Three Facts the Vision Stands On (All Real, All Citable)
 
-1. **Everyone is about to have a genome file.** The UK NHS begins rolling out
-   whole-genome sequencing for newborns in 2026 (£650M program, aiming at every
-   newborn within a decade), after pilot studies like GUARDIAN found serious,
-   treatable conditions in ~3% of babies — most missed by standard screening. The US
-   is following (BEACONS, first multi-state genomic newborn screening).
-2. **No workforce can be the relay at this scale.** Genomics is already the largest
-   data domain on earth — headed for 2–40 exabytes per year, doubling roughly every
-   seven months. Human-coordinated pipelines cannot be the interface between
-   sequencers and care at population scale. Governed, autonomous agents can.
-3. **Sequencers already speak "streaming."** Oxford Nanopore devices basecall in real
-   time — data is available while the DNA strand is still inside the pore, and can
-   feed cloud pipelines live. The machine-to-fleet handoff isn't science fiction;
-   the machine side already exists. What's been missing is a governed, autonomous
-   fleet on the receiving end.
+1. **Roughly 95% of people carry at least one actionable pharmacogenomic variant — yet a leaked genome can never be rotated like a password.** Adverse drug reactions cause ~2.2M serious hospitalizations per year in the US and are a leading cause of hospital admission across Europe. Meanwhile, the UK NHS begins rolling out whole-genome sequencing for newborns in 2026 (£650M program), and the US is following with BEACONS.
+2. **Static PDFs and central VCF honeypots break at population scale.** Genomics is headed for 2–40 exabytes per year. Asking patients or hospitals to upload raw whole-genome VCFs into third-party clouds for a one-time PDF report is both a privacy hazard and clinically obsolete the day a new prescription is written.
+3. **You don't need the raw genome to answer the clinical question.** A dispensing pharmacy or EHR ordering **Clopidogrel 75 mg** or **Escitalopram 20 mg** doesn't need 3 billion base pairs — it needs a **1-kilobyte Ed25519-signed phenotype attestation** (`CYP2C19 *2/*2 → Poor Metabolizer, CPIC 2024 Level 1A`), computed inside a confidential enclave under a purpose-bound, 1-tap revocable patient consent (`0 bytes raw genome egress`).
 
-## The vision, in one paragraph
+## The Vision, in One Paragraph
 
-Your genome is sequenced once — at birth, or the first time you're seriously ill —
-and from that moment it is a lifelong medical asset. Helixstreet is the autonomous
-layer that asset lives on: sequencing machines stream reads directly into a governed
-drop-zone; a fleet of agents de-identifies, variant-calls, annotates, and files a
-digital twin with zero human relay; and a cryptographic **genome fingerprint** —
-a SHA-256 of the raw readout, anchored in a hash-chained ledger the moment the data
-arrives — makes every future insight verifiable back to the exact molecules that were
-sequenced. When a new drug interaction is discovered in 2031, or a variant is
-reclassified in 2040, the fleet re-runs your genome unattended and updates your twin
-— and you can prove, mathematically, that it's *your* genome it worked on. Sequenced
-once. Trusted for life. Worked by agents forever.
+Your genome is sequenced once — and from that moment it stays sealed in your own vault. **Helixstreet is the first consent-native pharmacogenomics layer**: sequencing reads land in a governed drop-zone (`s3://helixstreet-nebius-data`); a 5-agent **NVIDIA Nemotron 3** fleet de-identifies manifests, calls variants on **NVIDIA Clara Parabricks (`pbrun deepvariant`)** on **Nebius L40S GPUs** (`aijob-e00p9xmknz4yphfvmm`, 6.049s), stratifies **1000 Genomes (`AFR/AMR/EAS/EUR/SAS`)** allele frequencies, and seals a salted **SHA-256 Merkle commitment root**. From then on, the raw genome never moves (`raw_genome_bytes_exposed = 0`). When a pharmacist or clinician queries `POST /ask`, the **Consent Gate** verifies purpose-bound standing consent, traverses the **CPIC + DPWG + PharmGKB + Swissmedic Knowledge Graph**, and releases only an **Ed25519-signed phenotype attestation** with ranked therapeutic alternatives and verbatim citations. And when a new **HL7 FHIR R4 `MedicationRequest`** or **CPIC guideline update** arrives years later, the **Living Twin** intercepts dangerous interactions unprompted from persistent memory.
 
-## Why the fingerprint matters (the part that sounds small and isn't)
+## Why Cryptographic Provenance + Consent Receipts Matter
 
-A genome file will outlive every system that touches it — hospitals merge, clouds
-migrate, formats change. Regulators already demand tamper-evident provenance
-(21 CFR Part 11); patients will demand ownership. Anchoring the SHA-256 of the raw
-genome in an append-only, hash-chained ledger at intake gives three properties no
-pipeline today provides by default:
+A genome file will outlive every hospital EHR that touches it. Anchoring the `SHA-256` of the raw genome, the per-variant **Merkle commitment root**, and every **Ed25519-signed Consent & Access Receipt** (`GRANTED` or `REFUSED_CONSENT_REVOKED`) in an append-only, hash-chained ledger provides four guarantees no static PGx tool offers today:
 
-- **Identity**: any future analysis states which exact readout it derives from.
-- **Integrity**: a single flipped byte anywhere in the file breaks the fingerprint.
-- **Portability**: the proof is math, not vendor lock-in — it travels with the
-  patient across institutions and decades.
-
-This is implemented in Helixstreet today: the intake agent fingerprints the raw BAM
-(server-side checksums at any scale, full SHA-256 for demo sizes), records it as a
-`GENOME_FINGERPRINTED` audit-chain entry, and the steward carries it into the twin.
-
-## The roadmap the video gestures at
-
-- **Now (demonstrated):** file lands in Nebius Object Storage → 5-agent fleet powered by **NVIDIA Nemotron 3 (Nano 30B · Super 120B · Ultra 550B)** on **Nebius Token Factory** and **NVIDIA Clara Parabricks (`pbrun deepvariant`)** on **Nebius Serverless GPU Jobs** executes compliance, GPU variant calling, 1000 Genomes annotation, CPIC pharmacogenomics (with Europe PMC + Tavily), Merkle commitment sealing, and Digital Twin synthesis — hands-off, concurrent, audited.
-- **Next:** the sequencer as a fleet client — instruments stream reads into the
-  drop-zone as runs progress; agents begin QC and triage *during* sequencing.
-- **Then:** lifelong re-analysis — when knowledge bases update (new CPIC guidance,
-  reclassified variants), the fleet autonomously re-screens every consented genome
-  and updates twins; each update chained to the original fingerprint.
-- **At scale:** every newborn's genome joins a fleet on day one; the audit chain and
-  agent registry make it governable across departments, institutions, and decades.
+- **Zero Raw Genome Egress (`0 Bytes`)**: Only signed phenotype answers cross the enclave boundary.
+- **Purpose-Bound & 1-Tap Revocable (`GDPR Art. 9` · `Swiss nFADP` · `EHDS 2027`)**: Patients grant standing consent to a specific pharmacy or clinic for a specific purpose and can revoke it in one tap, producing a cryptographic **Refusal Receipt**.
+- **Zero Hallucinated Guidance**: Every attestation is reproducible from its verbatim CPIC/DPWG citation and ranked RxNorm/ATC alternatives, offline-verifiable via `python scripts/verify_attestation.py`.
+- **Lifelong Memory**: The Living Twin watches both new prescriptions (`POST /fhir/MedicationRequest`) and evolving clinical guidelines (`POST /guidelines/update`) for life, logging consented **Closed-Loop Real-World Evidence (`POST /rwe/outcome`)**.
 
 ## Sources
 
+- [CPIC Guideline for CYP2C19 and Clopidogrel Therapy (Lee et al., Clin Pharmacol Ther 2022, PMID: 35034351)](https://cpicpgx.org/guidelines/guideline-for-clopidogrel-and-cyp2c19/)
+- [DPWG Guideline for Gene-Drug Interactions — KNMP / European Pharmacogenetics](https://www.knmp.nl/)
 - [Big Data: Astronomical or Genomical? — PLOS Biology](https://journals.plos.org/plosbiology/article?id=10.1371/journal.pbio.1002195)
 - [Whole-genome sequencing for every newborn in the UK — PMC](https://www.ncbi.nlm.nih.gov/pmc/articles/PMC12308296/)
-- [Newborn Genomes Programme — Genomics England](https://www.genomicsengland.co.uk/initiatives/newborns)
 - [GUARDIAN newborn screening results — Columbia University](https://www.cuimc.columbia.edu/news/pioneering-study-gene-technology-outperforms-standard-newborn-screening-tests)
-- [BEACONS: first US national genomic newborn screening initiative — Mass General Brigham](https://www.massgeneralbrigham.org/en/about/newsroom/press-releases/beacons-first-us-national-genomic-newborn-screening-initiative)
-- [How Oxford Nanopore sequencing works (real-time basecalling) — Oxford Nanopore](https://nanoporetech.com/blog/how-oxford-nanopore-sequencing-works)
