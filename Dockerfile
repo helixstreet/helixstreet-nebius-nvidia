@@ -2,9 +2,8 @@ FROM python:3.12-slim
 
 WORKDIR /workspace
 
-COPY helixstreet-agent/requirements.txt /tmp/agent-req.txt
-RUN pip install --no-cache-dir -r /tmp/agent-req.txt && \
-    pip install --no-cache-dir streamlit pandas altair pydeck requests boto3 openai python-dotenv
+COPY requirements.txt /tmp/requirements.txt
+RUN pip install --no-cache-dir -r /tmp/requirements.txt
 
 COPY helixstreet-agent /workspace/helixstreet-agent
 COPY helixstreet-ui /workspace/helixstreet-ui

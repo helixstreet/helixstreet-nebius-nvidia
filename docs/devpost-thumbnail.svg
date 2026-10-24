@@ -1,0 +1,60 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1200 800" width="1200" height="800" font-family="Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#090e1c"/>
+      <stop offset="50%" stop-color="#101935"/>
+      <stop offset="100%" stop-color="#0b1326"/>
+    </linearGradient>
+    <linearGradient id="greenAccent" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#76B900"/>
+      <stop offset="100%" stop-color="#38bdf8"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="1200" height="800" fill="url(#bg)"/>
+  <rect x="36" y="36" width="1128" height="728" rx="24" fill="#0f172a" stroke="#334155" stroke-width="2"/>
+  <rect x="36" y="36" width="1128" height="10" rx="5" fill="url(#greenAccent)"/>
+
+  <!-- Top Pill Badges -->
+  <rect x="76" y="78" width="380" height="42" rx="21" fill="#143325" stroke="#76B900" stroke-width="1.8"/>
+  <text x="266" y="105" fill="#a3e635" font-size="16" font-weight="700" text-anchor="middle">NEBIUS x NVIDIA GLOBAL AI HACKATHON</text>
+
+  <rect x="476" y="78" width="290" height="42" rx="21" fill="#2a1b4e" stroke="#c084fc" stroke-width="1.8"/>
+  <text x="621" y="105" fill="#e9d5ff" font-size="16" font-weight="700" text-anchor="middle">BEST APPS &amp; AGENTS TRACK</text>
+
+  <rect x="786" y="78" width="330" height="42" rx="21" fill="#152c4e" stroke="#38bdf8" stroke-width="1.8"/>
+  <text x="951" y="105" fill="#7dd3fc" font-size="16" font-weight="700" text-anchor="middle">NEBIUS TOKEN FACTORY + TAVILY</text>
+
+  <!-- Main Title -->
+  <text x="76" y="205" fill="#f8fafc" font-size="60" font-weight="800">Helixstreet</text>
+  <text x="76" y="272" fill="#76B900" font-size="44" font-weight="700">Nemotron Genome Lab</text>
+  <text x="76" y="325" fill="#cbd5e1" font-size="22" font-weight="500">Autonomous 5-Agent Genomic, Parabricks &amp; Pharmacogenomics Fleet</text>
+
+  <!-- 3 Model Tier Cards (Tier 1 Nano, Tier 2 Super, Tier 3 Ultra) -->
+  <rect x="76" y="370" width="330" height="175" rx="16" fill="#143325" stroke="#76B900" stroke-width="2"/>
+  <text x="100" y="410" fill="#a3e635" font-size="18" font-weight="700">TIER 1 · GATEKEEPER &amp; GPU</text>
+  <text x="100" y="442" fill="#f8fafc" font-size="21" font-weight="700">Nemotron 3 Nano 30B</text>
+  <text x="100" y="476" fill="#cbd5e1" font-size="15">• HIPAA Safe Harbor PII Redaction</text>
+  <text x="100" y="502" fill="#cbd5e1" font-size="15">• Clara Parabricks L40S GPU Dispatch</text>
+  <text x="100" y="528" fill="#86efac" font-size="14" font-weight="600">Token Factory · $0.06 in / $0.24 out</text>
+
+  <rect x="435" y="370" width="330" height="175" rx="16" fill="#152c4e" stroke="#38bdf8" stroke-width="2"/>
+  <text x="459" y="410" fill="#7dd3fc" font-size="18" font-weight="700">TIER 2 · TWIN STEWARD</text>
+  <text x="459" y="442" fill="#f8fafc" font-size="21" font-weight="700">Nemotron 3 Super 120B</text>
+  <text x="459" y="476" fill="#cbd5e1" font-size="15">• Structured Digital Twin Synthesis</text>
+  <text x="459" y="502" fill="#cbd5e1" font-size="15">• Salted Merkle Proofs &amp; SHA-256 Audit</text>
+  <text x="459" y="528" fill="#93c5fd" font-size="14" font-weight="600">Token Factory · $0.30 in / $0.90 out</text>
+
+  <rect x="794" y="370" width="330" height="175" rx="16" fill="#2a1b4e" stroke="#c084fc" stroke-width="2"/>
+  <text x="818" y="410" fill="#e9d5ff" font-size="18" font-weight="700">TIER 3 · DEEP CLINICAL AI</text>
+  <text x="818" y="442" fill="#f8fafc" font-size="21" font-weight="700">Nemotron 3 Ultra 550B</text>
+  <text x="818" y="476" fill="#cbd5e1" font-size="15">• 1000G Super-Populations + CPIC Level-A</text>
+  <text x="818" y="502" fill="#cbd5e1" font-size="15">• Tavily Trials + OpenFDA + 3Dmol.js PDB</text>
+  <text x="818" y="528" fill="#d8b4fe" font-size="14" font-weight="600">Token Factory · $1.00 in / $3.00 out</text>
+
+  <!-- Bottom Feature Bar -->
+  <rect x="76" y="585" width="1048" height="130" rx="16" fill="#131c33" stroke="#475569" stroke-width="1.5"/>
+  <text x="106" y="630" fill="#f8fafc" font-size="22" font-weight="700">⚡ From Raw Human DNA (.bam / .vcf) to Cryptographic Clinical Digital Twin</text>
+  <text x="106" y="666" fill="#94a3b8" font-size="18">40.2% Lower Pipeline Token Cost vs. All-Ultra  ·  3Dmol.js Crystal Structures  ·  1-of-24 Merkle ZKP</text>
+  <text x="106" y="698" fill="#38bdf8" font-size="18" font-weight="700">🌐 Live Demo: https://nebius.helixstreet.io</text>
+</svg>

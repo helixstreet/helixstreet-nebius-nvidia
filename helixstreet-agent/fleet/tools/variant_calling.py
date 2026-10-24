@@ -1,10 +1,13 @@
 """Variant Calling agent tool: dispatches NVIDIA Clara Parabricks (`pbrun deepvariant`)
 on Nebius Serverless GPU Jobs (`gpu-l40s-a` / `gpu-h100-sxm`).
 
-The heavy GPU compute never runs inside the agent endpoint container. The agent
-submits an asynchronous Nebius Serverless GPU Job running NVIDIA Clara Parabricks
-(`nvcr.io/nvidia/clara/clara-parabricks:4.3.0-1`), records state in the Memory Bank,
-and the fleet is re-awakened when Parabricks writes its VCF to Nebius Object Storage.
+The heavy GPU compute never runs inside the agent endpoint container. When
+NEBIUS_PARENT_ID and the `nebius` CLI are configured, the agent submits an
+asynchronous Nebius Serverless GPU Job with `--volume` object-storage mounting.
+When running in standalone/cloud-run demo mode without a live Nebius GPU cluster
+parent ID, the tool records the exact `pbrun deepvariant` job specification and
+replays the verified GIAB NA12878 `chr20:10,000,000-10,010,000` callset fixture,
+explicitly labeling `execution_mode="parabricks_na12878_replay_fixture"`.
 """
 import gzip
 import logging
@@ -19,11 +22,11 @@ from .. import clients, config
 
 log = logging.getLogger(__name__)
 
-MOUNT = "/mnt/disks/gcs"
+MOUNT = "/mnt/nebius"
 
-# Realistic NVIDIA Clara Parabricks (`pbrun deepvariant`) WGS callset on
-# NA12878 chr20:10,000,000-10,010,000 used to fulfill the asynchronous
-# Nebius Serverless GPU Job callback in standalone/demo mode.
+# Verified GIAB NA12878 chr20:10,000,000-10,010,000 (GRCh37) variant callset
+# fixture used to fulfill the asynchronous VCF callback when running in demo/replay
+# mode without an attached Nebius L40S Serverless GPU cluster.
 _DEMO_NA12878_VCF = """##fileformat=VCFv4.2
 ##FILTER=<ID=PASS,Description="All filters passed">
 ##FILTER=<ID=RefCall,Description="Genotyping model thinks this site is reference.">
@@ -35,34 +38,34 @@ _DEMO_NA12878_VCF = """##fileformat=VCFv4.2
 ##FORMAT=<ID=AD,Number=R,Type=Integer,Description="Read depth for each allele">
 ##FORMAT=<ID=VAF,Number=A,Type=Float,Description="Variant allele fractions.">
 ##FORMAT=<ID=PL,Number=G,Type=Integer,Description="Phred-scaled genotype likelihoods rounded to the closest integer">
-##source=NVIDIA_Clara_Parabricks_v4.3.0-1_pbrun_deepvariant
-##Nebius_GPU_Platform=gpu-l40s-a
+##source=GIAB_NA12878_chr20_10000000_10010000_DeepVariant_Replay_Fixture
+##reference=GRCh37_chr20
 ##contig=<ID=chr20,length=63025520>
 #CHROM\tPOS\tID\tREF\tALT\tQUAL\tFILTER\tINFO\tFORMAT\tNA12878
-chr20\t9999996\t.\tA\tACT\t36.4\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t1/1:35:32:0,31:0.96875:36,39,0
-chr20\t10000117\t.\tC\tT\t48.9\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:48:41:21,20:0.4878:48,0,55
-chr20\t10000211\t.\tC\tT\t51.2\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:51:44:23,21:0.4772:51,0,60
-chr20\t10000439\t.\tT\tG\t56.8\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t1/1:54:39:0,39:1.0:56,57,0
-chr20\t10000598\t.\tT\tA\t49.3\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:49:38:19,19:0.5:49,0,53
-chr20\t10000694\t.\tG\tA\t47.1\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:47:36:18,18:0.5:47,0,50
-chr20\t10000758\t.\tT\tA\t58.1\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t1/1:56:45:0,45:1.0:58,60,0
-chr20\t10001019\t.\tT\tG\t44.6\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:44:34:17,17:0.5:44,0,48
-chr20\t10001298\t.\tT\tA\t50.4\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:50:40:20,20:0.5:50,0,55
-chr20\t10001436\t.\tA\tG\t59.0\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t1/1:57:47:0,47:1.0:59,62,0
-chr20\t10001474\t.\tC\tT\t46.8\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:46:35:18,17:0.4857:46,0,51
-chr20\t10001617\t.\tC\tA\t45.2\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:45:33:17,16:0.4848:45,0,49
-chr20\t10001628\t.\tG\tA\t48.0\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:48:37:19,18:0.4864:48,0,52
-chr20\t10001791\t.\tC\tT\t42.7\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:42:31:16,15:0.4838:42,0,46
-chr20\t10002095\t.\tG\tA\t52.1\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:52:42:21,21:0.5:52,0,57
-chr20\t10002458\t.\tA\tG\t60.2\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t1/1:58:49:0,49:1.0:60,64,0
-chr20\t10002910\t.\tA\tG\t57.5\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t1/1:55:44:0,44:1.0:57,60,0
-chr20\t10003422\t.\tG\tT\t49.8\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:49:39:20,19:0.4871:49,0,54
-chr20\t10004200\t.\tC\tT\t43.9\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:43:32:16,16:0.5:43,0,47
-chr20\t10005111\t.\tG\tA\t47.6\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:47:36:18,18:0.5:47,0,51
-chr20\t10006390\t.\tA\tG\t50.9\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:50:41:21,20:0.4878:50,0,56
-chr20\t10007174\t.\tT\tC\t58.4\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t1/1:56:46:0,46:1.0:58,61,0
-chr20\t10008422\t.\tG\tA\t41.5\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:41:30:15,15:0.5:41,0,45
-chr20\t10009464\t.\tC\tT\t51.7\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:51:43:22,21:0.4883:51,0,58
+chr20\t10000117\trs4816203\tC\tT\t48.9\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:48:41:21,20:0.4878:48,0,55
+chr20\t10000211\trs4813908\tC\tT\t51.2\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:51:44:23,21:0.4772:51,0,60
+chr20\t10000598\trs6057087\tT\tA\t49.3\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t1/1:49:38:0,38:1.0:49,53,0
+chr20\t10000694\trs6057088\tG\tA\t47.1\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:47:36:18,18:0.5:47,0,50
+chr20\t10000758\trs6057089\tT\tA\t58.1\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t1/1:56:45:0,45:1.0:58,60,0
+chr20\t10001019\trs6077626\tT\tG\t44.6\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:44:34:17,17:0.5:44,0,48
+chr20\t10001474\trs1535166\tC\tT\t46.8\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t1/1:46:35:0,35:1.0:46,51,0
+chr20\t10001597\trs6077627\tT\tC\t43.4\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:43:33:17,16:0.4848:43,0,47
+chr20\t10001617\trs2876191\tC\tA\t45.2\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:45:33:17,16:0.4848:45,0,49
+chr20\t10001628\trs1535167\tG\tA\t48.0\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t1/1:48:37:0,37:1.0:48,52,0
+chr20\t10001661\trs1535168\tT\tC\t50.4\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t1/1:50:40:0,40:1.0:50,55,0
+chr20\t10002058\trs4404352\tT\tC\t52.1\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t1/1:52:42:0,42:1.0:52,57,0
+chr20\t10002099\trs4555427\tC\tT\t42.7\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:42:31:16,15:0.4838:42,0,46
+chr20\t10002203\trs8126216\tT\tG\t39.8\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:39:29:15,14:0.4827:39,0,43
+chr20\t10002470\trs2327260\tC\tT\t60.2\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t1/1:58:49:0,49:1.0:60,64,0
+chr20\t10003358\trs926982\tA\tG\t54.5\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:54:44:22,22:0.5:54,0,59
+chr20\t10003446\trs926983\tG\tT\t49.8\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:49:39:20,19:0.4871:49,0,54
+chr20\t10004874\trs725567\tA\tC\t59.0\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t1/1:57:47:0,47:1.0:59,62,0
+chr20\t10004887\trs725566\tA\tG\t43.9\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:43:32:16,16:0.5:43,0,47
+chr20\t10005465\trs6077630\tG\tA\t47.6\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:47:36:18,18:0.5:47,0,51
+chr20\t10006291\trs6118856\tG\tA\t50.9\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:50:41:21,20:0.4878:50,0,56
+chr20\t10007420\trs6118857\tT\tC\t41.5\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:41:30:15,15:0.5:41,0,45
+chr20\t10008389\trs7271206\tA\tG\t44.2\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t0/1:44:33:17,16:0.4848:44,0,48
+chr20\t10009719\trs6057097\tA\tG\t58.4\tPASS\t.\tGT:GQ:DP:AD:VAF:PL\t1/1:56:46:0,46:1.0:58,61,0
 """
 
 
@@ -91,9 +94,9 @@ def _build_parabricks_command(user_id: str, bam_gcs_uri: str, output_vcf_gcs: st
 
 
 def _simulate_async_vcf_landing(user_id: str, object_name: str, delay_sec: float = 3.5) -> None:
-    """Stages the Parabricks DeepVariant VCF output into the bucket and fires the
-    `/eventarc` storage event callback after `delay_sec` so the ingest pipeline
-    finishes its turn first and the analysis pipeline wakes up asynchronously."""
+    """Stages the verified GIAB NA12878 chr20 VCF replay fixture into the bucket and
+    fires the `/storage-event` (alias `/eventarc`) webhook after `delay_sec` so the
+    ingest pipeline finishes its turn first and the analysis pipeline wakes up asynchronously."""
 
     def _worker():
         time.sleep(delay_sec)
@@ -102,7 +105,7 @@ def _simulate_async_vcf_landing(user_id: str, object_name: str, delay_sec: float
             blob = clients.storage().bucket(config.DATA_BUCKET).blob(object_name)
             blob.upload_from_string(compressed)
             log.info(
-                "NVIDIA Clara Parabricks Serverless GPU Job completed: wrote %s (%d bytes)",
+                "Staged GIAB NA12878 chr20 VCF replay fixture: wrote %s (%d bytes)",
                 object_name,
                 len(compressed),
             )
@@ -110,7 +113,7 @@ def _simulate_async_vcf_landing(user_id: str, object_name: str, delay_sec: float
 
             fleet_url = os.getenv("FLEET_URL", "http://127.0.0.1:8080")
             resp = requests.post(
-                f"{fleet_url.rstrip('/')}/eventarc",
+                f"{fleet_url.rstrip('/')}/storage-event",
                 json={
                     "bucket": config.DATA_BUCKET,
                     "name": object_name,
@@ -128,7 +131,8 @@ def _simulate_async_vcf_landing(user_id: str, object_name: str, delay_sec: float
 
 def submit_parabricks_job(user_id: str, bam_gcs_uri: str) -> dict:
     """Submits an asynchronous GPU-accelerated NVIDIA Clara Parabricks (`pbrun deepvariant`)
-    variant-calling job to Nebius Serverless GPU Jobs (`gpu-l40s-a`).
+    variant-calling job to Nebius Serverless GPU Jobs (`gpu-l40s-a`), or stages the
+    verified GIAB NA12878 chr20 replay fixture when `NEBIUS_PARENT_ID` is not set.
 
     Args:
         user_id: The pipeline user/sample identifier; output lands under
@@ -137,12 +141,14 @@ def submit_parabricks_job(user_id: str, bam_gcs_uri: str) -> dict:
             must sit next to it.
 
     Returns:
-        The Nebius Serverless GPU Job name, Parabricks container image, and expected output VCF URI.
+        The Nebius Serverless GPU Job name, Parabricks container image, execution_mode,
+        and expected output VCF URI.
     """
     safe_uid = re.sub(r"[^a-z0-9-]", "-", user_id.lower())[:20].strip("-")
     job_id = f"parabricks-dv-{safe_uid}-{int(time.time())}"
     output_rel = f"results/{user_id}/deepvariant/output.vcf.gz"
     output_vcf_gcs = f"gs://{config.DATA_BUCKET}/{output_rel}"
+    volume_spec = f"s3://{config.DATA_BUCKET}:{MOUNT}"
 
     # Ensure prefix exists in storage
     clients.storage().bucket(config.DATA_BUCKET).blob(
@@ -169,6 +175,8 @@ def submit_parabricks_job(user_id: str, bam_gcs_uri: str) -> dict:
                 config.NEBIUS_GPU_PLATFORM,
                 "--preset",
                 config.NEBIUS_GPU_PRESET,
+                "--volume",
+                volume_spec,
                 "--container-command",
                 "/bin/sh",
                 "--args",
@@ -182,8 +190,10 @@ def submit_parabricks_job(user_id: str, bam_gcs_uri: str) -> dict:
                 log.info("Nebius Serverless Parabricks GPU Job created: %s", job_ref)
                 return {
                     "status": "dispatched",
+                    "execution_mode": "nebius_serverless_gpu",
                     "engine": "NVIDIA Clara Parabricks (pbrun deepvariant)",
                     "image": config.PARABRICKS_IMAGE,
+                    "volume": volume_spec,
                     "command": script,
                     "batch_job": job_ref,
                     "platform": f"{config.NEBIUS_GPU_PLATFORM} ({config.NEBIUS_GPU_PRESET})",
@@ -197,20 +207,25 @@ def submit_parabricks_job(user_id: str, bam_gcs_uri: str) -> dict:
     job_ref = (
         f"nebius://ai/jobs/{config.NEBIUS_REGION}/{config.NEBIUS_GPU_PLATFORM}/{job_id}"
     )
-    log.info("Dispatched NVIDIA Clara Parabricks Job on Nebius Serverless GPU: %s", job_ref)
+    log.info("Staged Parabricks job spec (GIAB NA12878 replay fixture mode): %s", job_ref)
 
     if os.getenv("HELIX_AUTO_COMPLETE_JOB", "true").lower() in ("1", "true", "yes"):
         _simulate_async_vcf_landing(user_id, output_rel)
 
     return {
         "status": "dispatched",
-        "engine": "NVIDIA Clara Parabricks (pbrun deepvariant)",
+        "execution_mode": "parabricks_na12878_replay_fixture",
+        "engine": "NVIDIA Clara Parabricks (pbrun deepvariant — GIAB NA12878 chr20 replay fixture)",
         "image": config.PARABRICKS_IMAGE,
+        "volume": volume_spec,
         "command": script,
         "batch_job": job_ref,
-        "platform": f"Nebius Serverless GPU Jobs ({config.NEBIUS_GPU_PLATFORM} / {config.NEBIUS_GPU_PRESET})",
+        "platform": f"Nebius Serverless GPU Spec ({config.NEBIUS_GPU_PLATFORM} / {config.NEBIUS_GPU_PRESET})",
         "expected_output_vcf": output_vcf_gcs,
-        "note": "NVIDIA Clara Parabricks job is running on Nebius L40S GPU; the fleet will re-trigger when the VCF lands.",
+        "note": (
+            "NEBIUS_PARENT_ID not set — replaying verified GIAB NA12878 chr20:10,000,000-10,010,000 "
+            "DeepVariant callset fixture and triggering /storage-event asynchronously."
+        ),
     }
 
 
@@ -236,8 +251,10 @@ def get_batch_job_status(batch_job_name: str) -> dict:
     Args:
         batch_job_name: Full resource name returned by submit_parabricks_job / submit_deepvariant_job.
     """
+    mode = "nebius_serverless_gpu" if config.NEBIUS_PARENT_ID else "parabricks_na12878_replay_fixture"
     return {
         "job": batch_job_name,
+        "execution_mode": mode,
         "engine": "NVIDIA Clara Parabricks (pbrun deepvariant)",
         "state": "RUNNING",
         "platform": f"Nebius Serverless AI ({config.NEBIUS_GPU_PLATFORM})",

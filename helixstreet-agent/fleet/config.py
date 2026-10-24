@@ -16,7 +16,7 @@ for _env_candidate in (
 load_dotenv()
 
 # Nebius AI Cloud project & region
-PROJECT_ID = os.getenv("NEBIUS_PROJECT_ID", os.getenv("GOOGLE_CLOUD_PROJECT", "helixstreet-nebius"))
+PROJECT_ID = os.getenv("NEBIUS_PROJECT_ID", "helixstreet-nebius")
 NEBIUS_TENANT_ID = os.getenv("NEBIUS_TENANT_ID", "")
 NEBIUS_REGION = os.getenv("NEBIUS_REGION", "eu-north1")
 NEBIUS_SUBNET_ID = os.getenv("NEBIUS_SUBNET_ID", "")
@@ -25,28 +25,36 @@ NEBIUS_SUBNET_ID = os.getenv("NEBIUS_SUBNET_ID", "")
 NEBIUS_BASE_URL = os.getenv(
     "NEBIUS_BASE_URL", "https://api.tokenfactory.nebius.com/v1/"
 )
+NEBIUS_API_BASE = NEBIUS_BASE_URL
 NEBIUS_API_KEY = os.getenv("NEBIUS_API_KEY", "")
 
 # Right-sized 3-tier NVIDIA Nemotron model architecture on Nebius Token Factory:
-# 1. Nano 30B (MoE A3B) — high-throughput compliance gatekeeper & job dispatch
+# Tier 1: Nano 30B (MoE A3B) — high-throughput compliance gatekeeper & job dispatch
 NEMOTRON_NANO_MODEL = os.getenv(
     "NEMOTRON_NANO_MODEL", "nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B"
 )
-# 2. Super 120B (MoE A12B) — structured twin synthesis & audit stewardship
+# Tier 2: Super 120B (MoE A12B) — structured twin synthesis & audit stewardship
 NEMOTRON_SUPER_MODEL = os.getenv(
     "NEMOTRON_SUPER_MODEL", "nvidia/nemotron-3-super-120b-a12b"
 )
-# 3. Ultra 550B (MoE A55B) — deep genomic variant & CPIC clinical pharmacogenomics reasoning
+# Tier 3: Ultra 550B (MoE A55B) — deep genomic variant & CPIC clinical pharmacogenomics reasoning
 NEMOTRON_ULTRA_MODEL = os.getenv(
     "NEMOTRON_ULTRA_MODEL", "nvidia/Nemotron-3-Ultra-550b-a55b"
 )
+
+# Official Nebius Token Factory catalog pricing (USD per 1M input / output tokens)
+NEBIUS_MODEL_PRICING = {
+    NEMOTRON_NANO_MODEL: {"tier": "Tier 1 — Fast / High-Throughput", "input_per_1m": 0.06, "output_per_1m": 0.24},
+    NEMOTRON_SUPER_MODEL: {"tier": "Tier 2 — Structured Synthesis", "input_per_1m": 0.30, "output_per_1m": 0.90},
+    NEMOTRON_ULTRA_MODEL: {"tier": "Tier 3 — Deep Clinical Reasoning", "input_per_1m": 1.00, "output_per_1m": 3.00},
+}
 
 # Backwards-compatible aliases used by existing modules/tests
 REASONING_MODEL = os.getenv("REASONING_MODEL", NEMOTRON_ULTRA_MODEL)
 STEWARD_MODEL = os.getenv("STEWARD_MODEL", NEMOTRON_SUPER_MODEL)
 INTAKE_MODEL_NAME = os.getenv("INTAKE_MODEL", NEMOTRON_NANO_MODEL)
 
-# Storage & state backend ("local", "s3", or "gcp")
+# Storage & state backend ("local" or "s3")
 STORAGE_BACKEND = os.getenv("STORAGE_BACKEND", "local")
 STATE_BACKEND = os.getenv("STATE_BACKEND", "local")
 DATA_DIR = os.getenv("HELIX_DATA_DIR", "/tmp/helixstreet-nebius")
@@ -83,17 +91,9 @@ DEEPVARIANT_REGIONS = os.getenv("DEEPVARIANT_REGIONS", "chr20:10000000-10010000"
 REFERENCE_FASTA = os.getenv(
     "REFERENCE_FASTA", f"gs://{DATA_BUCKET}/ref/ucsc.hg19.chr20.unittest.fasta"
 )
-BATCH_SERVICE_ACCOUNT = os.getenv("BATCH_SERVICE_ACCOUNT", "")
 LOCATION = os.getenv("BATCH_LOCATION", NEBIUS_REGION)
 
-# 1000 Genomes Phase 3 reference table (BigQuery optional fallback)
-BQ_1KG_TABLE = os.getenv(
-    "BQ_1KG_TABLE",
-    "bigquery-public-data.human_genome_variants.1000_genomes_phase_3_optimized_schema_variants_20150220",
-)
-
-# Guardrails configuration
-MODEL_ARMOR_TEMPLATE = os.getenv("MODEL_ARMOR_TEMPLATE", "")
+# Intake safety screening configuration
 NEMOTRON_GUARDRAILS_ENABLED = os.getenv("NEMOTRON_GUARDRAILS_ENABLED", "true").lower() in (
     "1",
     "true",

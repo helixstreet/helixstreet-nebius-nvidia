@@ -3,7 +3,7 @@
 Event routing (deterministic) -> pipeline execution (agentic, NVIDIA Nemotron 3
 via Nebius Token Factory + Google ADK):
 
-  uploads/{user_id}/*.bam                        -> ingest fleet (intake -> DeepVariant dispatch)
+  uploads/{user_id}/*.bam                        -> ingest fleet (intake -> Parabricks dispatch)
   uploads/{user_id}/*.vcf[.gz]                   -> analysis fleet (direct VCF, skips calling)
   results/{user_id}/deepvariant/output.vcf.gz    -> analysis fleet (async resume)
 
@@ -14,6 +14,7 @@ processed exactly once, tracked in the Memory Bank.
 import base64
 import json
 import logging
+import os
 import re
 
 from fastapi import FastAPI, Request
@@ -27,7 +28,7 @@ from fleet.tools import zkproof_core as zk
 logging.basicConfig(level=logging.INFO, format="%(message)s")
 log = logging.getLogger("helixstreet.main")
 
-app = FastAPI(title="Helixstreet Fleet — Nebius Token Factory + NVIDIA Nemotron 3")
+app = FastAPI(title="Helixstreet — Nemotron Genome Lab (Nebius Token Factory + NVIDIA Nemotron 3)")
 
 _BAM_RE = re.compile(r"^uploads/(?P<uid>[^/]+)/[^/]+\.bam$")
 _VCF_UPLOAD_RE = re.compile(r"^uploads/(?P<uid>[^/]+)/[^/]+\.vcf(\.gz)?$")
@@ -79,18 +80,23 @@ def healthz():
         "reasoning_model": config.NEMOTRON_ULTRA_MODEL,
         "steward_model": config.NEMOTRON_SUPER_MODEL,
         "intake_model": config.NEMOTRON_NANO_MODEL,
+        "pricing_per_1m_usd": config.NEBIUS_MODEL_PRICING,
         "variant_caller": "NVIDIA Clara Parabricks 4.3 (pbrun deepvariant)",
         "parabricks_image": config.PARABRICKS_IMAGE,
         "serverless_gpu_platform": f"{config.NEBIUS_GPU_PLATFORM} ({config.NEBIUS_GPU_PRESET})",
+        "parabricks_execution_mode": (
+            "nebius_serverless_gpu" if config.NEBIUS_PARENT_ID else "parabricks_na12878_replay_fixture"
+        ),
         "api_key_configured": bool(config.NEBIUS_API_KEY),
+        "tavily_configured": bool(os.getenv("TAVILY_API_KEY", "").strip()),
     }
 
 
 def _parse_gcs_event(body: dict) -> tuple[str, str, str]:
-    """Accepts direct CloudEvent payloads, Pub/Sub push envelopes, or S3 event notifications."""
-    if "bucket" in body and "name" in body:  # direct CloudEvent data
+    """Accepts direct storage event payloads, Pub/Sub push envelopes, or S3 event notifications."""
+    if "bucket" in body and "name" in body:  # direct storage event data
         return body["bucket"], body["name"], str(body.get("generation", ""))
-    if "message" in body:  # Pub/Sub push envelope
+    if "message" in body:  # push envelope
         data = json.loads(base64.b64decode(body["message"]["data"]).decode())
         return data["bucket"], data["name"], str(data.get("generation", ""))
     if "Records" in body and body["Records"]:  # S3 / Nebius Object Storage notification
@@ -116,6 +122,7 @@ def _already_processed(bucket: str, name: str, generation: str) -> bool:
     return False
 
 
+@app.post("/storage-event")
 @app.post("/eventarc")
 async def handle_eventarc(request: Request):
     body = await request.json()

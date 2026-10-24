@@ -3,7 +3,7 @@
 Ingest pipeline  (fires on BAM upload):   intake -> variant_caller
 Analysis pipeline (fires on VCF arrival): analyst -> pharmacist -> steward
 
-Routing between pipelines is deterministic (storage / Eventarc events), execution
+Routing between pipelines is deterministic (storage events), execution
 within each stage is agentic. Three-tier NVIDIA Nemotron 3 model routing on
 Nebius Token Factory (`https://api.tokenfactory.nebius.com/v1/`):
   - Tier 1 (Fast / High-Throughput): `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`
@@ -12,8 +12,8 @@ Nebius Token Factory (`https://api.tokenfactory.nebius.com/v1/`):
   - Tier 2 (Structured Synthesis): `nvidia/nemotron-3-super-120b-a12b`
     powers `helixstreet_steward` (Digital Twin assembly and Memory Bank persistence).
   - Tier 3 (Deep Scientific & Clinical Reasoning): `nvidia/Nemotron-3-Ultra-550b-a55b`
-    powers `helixstreet_analyst` (VCF + 1000 Genomes population genetics + Merkle ZKP)
-    and `helixstreet_pharmacist` (CPIC star-allele & Europe PMC literature reasoning).
+    powers `helixstreet_analyst` (VCF + 1000 Genomes super-population genetics + Merkle ZKP)
+    and `helixstreet_pharmacist` (CPIC star-allele, Tavily clinical trials & Europe PMC reasoning).
 
 The async gap between the two pipelines — while DeepVariant / Clara Parabricks
 runs on Nebius Serverless Jobs — is bridged by the persistent Memory Bank.
@@ -23,11 +23,16 @@ from google.adk.agents import Agent, SequentialAgent
 from . import config
 from .nebius_llm import NebiusTokenFactoryLlm
 from .tools.audit import record_audit_event
-from .tools.compliance import screen_with_model_armor, scrub_pii
+from .tools.compliance import deidentify_manifest, screen_with_model_armor, scrub_pii
 from .tools.gcs import fingerprint_gcs_object, read_gcs_text, write_gcs_text
 from .tools.genomics import annotate_with_1000genomes, parse_vcf
 from .tools.memory import get_pipeline_state, save_digital_twin, update_pipeline_state
-from .tools.pharmacogenomics import match_pgx_variants, search_literature
+from .tools.pharmacogenomics import (
+    fetch_cpic_diplotype_details,
+    match_pgx_variants,
+    search_clinical_trials_tavily,
+    search_literature,
+)
 from .tools.variant_calling import (
     get_batch_job_status,
     submit_deepvariant_job,
@@ -49,28 +54,29 @@ intake_agent = Agent(
     model=NEMOTRON_NANO,
     description=(
         "Compliance gatekeeper on NVIDIA Nemotron 3 Nano (Nebius Token Factory): "
-        "screens and de-identifies incoming genomic manifests."
+        "screens and de-identifies incoming genomic manifests without exposing raw PII to LLM prompts."
     ),
     instruction="""You are the Intake & Compliance agent of the Helixstreet fleet, powered by NVIDIA Nemotron 3 Nano on Nebius Token Factory.
 A new genomic sample upload event will be described to you, including the storage
 URI of a patient manifest (manifest.json) next to the BAM file.
 
 Do ALL of the following, in order, using your tools:
-1. Read the manifest with read_gcs_text.
-2. Screen its content with screen_with_model_armor. If verdict is 'blocked',
-   record an audit event with action INTAKE_BLOCKED and STOP with a clear summary.
-3. Redact PII from the manifest with scrub_pii.
-4. Write the redacted manifest back with write_gcs_text, to the same path with
-   suffix '.scrubbed.json' instead of '.json'.
-5. Record an audit event (action PII_SCRUBBED) naming the engine used.
-6. Fingerprint the raw genome with fingerprint_gcs_object on the BAM URI, then
+1. Call deidentify_manifest with the manifest URI. This reads, screens for prompt
+   injection, and scrubs HIPAA Safe Harbor PII directly in storage so raw PII
+   never enters the LLM context window, writing manifest.scrubbed.json automatically.
+2. If the returned verdict is 'blocked', record an audit event with action
+   INTAKE_BLOCKED and STOP with a clear summary.
+3. If the manifest was missing (status == 'missing'), record an audit event
+   (action MANIFEST_MISSING) and continue to step 5.
+4. Record an audit event (action PII_SCRUBBED) naming the engine returned by deidentify_manifest.
+5. Fingerprint the raw genome with fingerprint_gcs_object on the BAM URI, then
    record an audit event (action GENOME_FINGERPRINTED) containing the checksums.
    This anchors the genome's identity in the tamper-evident ledger so every
    future insight can prove which exact molecule-readout it derives from.
-If the manifest is missing, note that, audit it (action MANIFEST_MISSING), and continue.
 Finish with a one-paragraph handoff summary for the variant-calling agent,
-repeating the user_id and the BAM gs:// URI exactly as given to you.""",
+repeating the user_id and the BAM URI exactly as given to you.""",
     tools=[
+        deidentify_manifest,
         read_gcs_text,
         screen_with_model_armor,
         scrub_pii,
@@ -89,14 +95,13 @@ variant_caller_agent = Agent(
     ),
     instruction="""You are the Variant Calling agent of the Helixstreet fleet, powered by NVIDIA Nemotron 3 Nano on Nebius Token Factory.
 The intake agent has cleared a sample. From the conversation, extract the
-user_id and the BAM gs:// URI, then:
+user_id and the BAM URI, then:
 1. Call submit_parabricks_job (or submit_deepvariant_job) with the user_id and BAM URI to launch GPU-accelerated NVIDIA Clara Parabricks (`pbrun deepvariant`) on Nebius Serverless GPU Jobs.
 2. Call update_pipeline_state with stage VARIANT_CALLING_RUNNING and details
-   containing the returned batch_job name and expected_output_vcf.
-3. Record an audit event (action PARABRICKS_DISPATCHED) with the job name.
-Then summarize: the NVIDIA Clara Parabricks GPU job is running asynchronously on
-Nebius Serverless GPU Jobs (`gpu-l40s-a`) and the fleet will resume automatically
-when the VCF lands in Nebius Object Storage. Do NOT wait or poll — end your turn after dispatching.""",
+   containing the returned batch_job name, execution_mode, and expected_output_vcf.
+3. Record an audit event (action PARABRICKS_DISPATCHED) with the job name and execution_mode.
+Then summarize: state the job name, execution_mode, and that the fleet will resume
+automatically when the VCF lands in Object Storage. Do NOT wait or poll — end your turn after dispatching.""",
     tools=[
         submit_parabricks_job,
         submit_deepvariant_job,
@@ -111,25 +116,25 @@ analyst_agent = Agent(
     model=NEMOTRON_ULTRA,
     description=(
         "Deep genomic reasoning on NVIDIA Nemotron 3 Ultra (Nebius Token Factory): "
-        "parses variant calls, adds 1000 Genomes population context, and seals a Merkle commitment."
+        "parses variant calls, adds 1000 Genomes super-population context, and seals a Merkle commitment."
     ),
     instruction="""You are the Genomics Analyst agent of the Helixstreet fleet, powered by NVIDIA Nemotron 3 Ultra on Nebius Token Factory.
-A DeepVariant result VCF has landed; its gs:// URI and the user_id will be in
+A DeepVariant result VCF has landed; its URI and the user_id will be in
 the event description. Do the following:
 1. Check get_pipeline_state for the user to recover context from the Memory Bank.
 2. Parse the VCF with parse_vcf.
 3. Call annotate_with_1000genomes once: pick the chromosome carrying the most
    variants and use the min and max positions of the variants on it.
-4. Record an audit event (action ANALYSIS_COMPLETE) with variant counts.
-5. Call commit_genome with the user_id and the same VCF URI to seal a
-   per-variant commitment; note the returned commitment_root. This lets the
+4. Call commit_genome with the user_id and the same VCF URI to seal a
+   per-variant Merkle commitment; note the returned commitment_root. This lets the
    genome later prove single facts about itself without being revealed.
+5. Record an audit event (action ANALYSIS_COMPLETE) with variant counts and the commitment_root.
 Produce a structured analysis: number of calls, notable variants (high quality,
-non-reference genotypes), how they compare to 1000 Genomes population allele
-frequencies (common vs. rare, noting any 0-based vs 1-based coordinate offsets),
-and the commitment_root. Be precise and quantitative; the steward agent will
-persist your analysis. Never speculate about medical diagnoses — frame findings
-as research-grade annotations only.""",
+non-reference genotypes, dbSNP rsIDs), how they compare to 1000 Genomes Phase 3
+global and super-population allele frequencies (AFR, AMR, EAS, EUR, SAS),
+and the exact Merkle commitment_root returned by commit_genome. Be precise and
+quantitative; the steward agent will persist your analysis. Never speculate
+about medical diagnoses — frame findings as research-grade annotations only.""",
     tools=[
         get_pipeline_state,
         parse_vcf,
@@ -144,24 +149,32 @@ pharmacist_agent = Agent(
     model=NEMOTRON_ULTRA,
     description=(
         "Clinical pharmacogenomics reasoning on NVIDIA Nemotron 3 Ultra (Nebius Token Factory): "
-        "screens called variants for CPIC drug-gene interactions with Europe PMC literature evidence."
+        "screens called variants for CPIC drug-gene interactions with Europe PMC & Tavily clinical evidence."
     ),
     instruction="""You are the Pharmacogenomics Counselor agent of the Helixstreet fleet, powered by NVIDIA Nemotron 3 Ultra on Nebius Token Factory.
-The analyst has just examined a VCF whose gs:// URI and user_id appear earlier
+The analyst has just examined a VCF whose URI and user_id appear earlier
 in the conversation. Your job:
 1. Call parse_vcf on that same VCF URI.
 2. Pass the returned variants list (as a JSON string) to match_pgx_variants.
 3. If there are matches: for the TWO most clinically significant gene-drug
    pairs, call search_literature once each (query like
-   '<gene> <drug> pharmacogenomics') to attach recent peer-reviewed evidence.
+   '<gene> <drug> pharmacogenomics') to attach recent peer-reviewed evidence
+   and Tavily FDA/CPIC clinical guideline hits.
 4. Record an audit event (action PGX_SCREEN_COMPLETE) with the match count.
 Report a concise medication-insights summary: per match, the gene, star
-allele, zygosity, predicted phenotype, affected drugs, CPIC guidance, and any
-literature citations (title, year, PMID). If there are NO matches, say so in
-one sentence (expected for BAM-derived VCFs, which carry no rsIDs) and skip
-literature search entirely. Frame everything as research-grade annotation —
-never prescribe, never advise dosing changes; always defer to clinicians.""",
-    tools=[parse_vcf, match_pgx_variants, search_literature, record_audit_event],
+allele, diplotype, zygosity, predicted phenotype, EHR priority, affected drugs,
+CPIC guidance, and any literature citations (title, year, PMID). If there are NO
+matches, say so in one sentence and skip literature search entirely. Frame
+everything as research-grade annotation — never prescribe, never advise dosing
+changes; always defer to clinicians.""",
+    tools=[
+        parse_vcf,
+        match_pgx_variants,
+        fetch_cpic_diplotype_details,
+        search_literature,
+        search_clinical_trials_tavily,
+        record_audit_event,
+    ],
 )
 
 steward_agent = Agent(
@@ -174,16 +187,16 @@ steward_agent = Agent(
     instruction="""You are the Data Steward agent of the Helixstreet fleet, powered by NVIDIA Nemotron 3 Super on Nebius Token Factory.
 Take the analyst's and pharmacist's findings from the conversation above and:
 1. Build a JSON digital-twin summary with keys: variants_called (int),
-   notable_variants (list), population_context (string),
+   notable_variants (list), population_context (string including 1000G Phase 3
+   AFR/AMR/EAS/EUR/SAS stratification),
    medication_insights (list of the pharmacist's matches with gene, phenotype,
    drugs, guidance, citations — or an empty list if none),
    genome_fingerprint (the sha256 of the analyzed VCF from parse_vcf output,
    plus the raw-genome checksums if the intake agent fingerprinted a BAM),
-   genome_commitment_root (the commitment_root the analyst reported, enabling
-   minimal-disclosure proofs about the sealed genome),
+   genome_commitment_root (the Merkle commitment_root the analyst reported from
+   commit_genome — do NOT copy the VCF sha256 here),
    risk_notes (string, research-grade only), provenance (string mentioning
-   NVIDIA Nemotron 3 on Nebius Token Factory + DeepVariant on Nebius Serverless Jobs +
-   1000 Genomes + CPIC reference where applicable).
+   NVIDIA Nemotron 3 on Nebius Token Factory + 1000 Genomes Phase 3 + CPIC).
 2. Call save_digital_twin with the user_id and that JSON as a string.
 3. Call update_pipeline_state with stage TWIN_SAVED.
 4. Record an audit event (action TWIN_SAVED).

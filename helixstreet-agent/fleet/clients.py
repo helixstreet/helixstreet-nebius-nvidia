@@ -1,9 +1,10 @@
 """Unified Cloud & Local Clients for the Helixstreet fleet on Nebius AI Cloud.
 
 Provides:
+- Token Factory Client:
+  OpenAI-compatible client pointed at `https://api.tokenfactory.nebius.com/v1/`.
 - State Store (Memory Bank, Agent Registry, Audit Ledger, Genome Vault):
-  SQLite-backed document store in HELIX_DATA_DIR (default on Nebius Serverless
-  Endpoints / local volumes), with optional Firestore compatibility.
+  Process-safe SQLite WAL document store in HELIX_DATA_DIR.
 - Object Storage:
   Nebius Object Storage (S3-compatible via boto3) + local filesystem volume
   mirror with a unified `.bucket(name).blob(key)` interface.
@@ -128,7 +129,7 @@ class LocalCollectionReference(LocalQuery):
 
 
 class LocalDocumentClient:
-    """Process-safe SQLite document store compatible with Firestore semantics."""
+    """Process-safe SQLite document store for the Helixstreet Memory Bank."""
 
     def __init__(self, db_path: Optional[str] = None):
         base = Path(config.DATA_DIR)
@@ -339,39 +340,33 @@ class NebiusStorageClient:
 
 
 @lru_cache(maxsize=1)
-def firestore():
-    if config.STATE_BACKEND == "gcp":
-        from google.cloud import firestore as _fs
+def token_factory():
+    """Returns a cached OpenAI client configured for Nebius Token Factory."""
+    from openai import OpenAI
 
-        return _fs.Client(project=config.PROJECT_ID)
+    api_key = (
+        os.getenv("NEBIUS_API_KEY")
+        or os.getenv("OPENAI_API_KEY")
+        or config.NEBIUS_API_KEY
+        or "missing-nebius-api-key"
+    )
+    return OpenAI(
+        base_url=config.NEBIUS_API_BASE,
+        api_key=api_key,
+        timeout=90.0,
+    )
+
+
+@lru_cache(maxsize=1)
+def state_store() -> LocalDocumentClient:
     return LocalDocumentClient()
 
 
 @lru_cache(maxsize=1)
-def storage():
-    if config.STORAGE_BACKEND == "gcp":
-        from google.cloud import storage as _gcs
+def firestore() -> LocalDocumentClient:
+    return state_store()
 
-        return _gcs.Client(project=config.PROJECT_ID)
+
+@lru_cache(maxsize=1)
+def storage() -> NebiusStorageClient:
     return NebiusStorageClient()
-
-
-@lru_cache(maxsize=1)
-def bigquery():
-    from google.cloud import bigquery as _bq
-
-    return _bq.Client(project=config.PROJECT_ID)
-
-
-@lru_cache(maxsize=1)
-def dlp():
-    from google.cloud import dlp_v2
-
-    return dlp_v2.DlpServiceClient()
-
-
-@lru_cache(maxsize=1)
-def batch():
-    from google.cloud import batch_v1
-
-    return batch_v1.BatchServiceClient()

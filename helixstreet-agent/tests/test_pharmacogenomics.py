@@ -1,4 +1,4 @@
-"""PGx zygosity handling and CPIC reference matching."""
+"""PGx zygosity handling, CPIC reference matching, Tavily Bearer auth, and ClinicalTrials.gov matcher."""
 import json
 
 from fleet.tools.pharmacogenomics import (
@@ -7,6 +7,7 @@ from fleet.tools.pharmacogenomics import (
     _zygosity,
     fetch_openfda_drug_label,
     match_pgx_variants,
+    search_clinical_trials_tavily,
     search_tavily_clinical_guidelines,
 )
 
@@ -39,12 +40,14 @@ class TestMatching:
         assert len(result["matches"]) == 1
         m = result["matches"][0]
         assert m["gene"] == "CYP2C19"
+        assert m["diplotype"] == "*2/*2"
         assert m["zygosity"] == "homozygous"
         assert m["predicted_phenotype"] == PGX_REFERENCE["rs4244285"]["hom"]
 
     def test_het_uses_het_phenotype(self):
         result = match_pgx_variants(json.dumps([_variant("rs4149056", "0/1")]))
         assert result["matches"][0]["predicted_phenotype"] == PGX_REFERENCE["rs4149056"]["het"]
+        assert result["matches"][0]["diplotype"] == "*1/*5"
 
     def test_unknown_rsid_is_not_matched(self):
         result = match_pgx_variants(json.dumps([_variant("rs0000000", "1/1")]))
@@ -71,10 +74,11 @@ class TestTavilyClinicalSearch:
         monkeypatch.delenv("TAVILY_API_KEY", raising=False)
         assert search_tavily_clinical_guidelines("CYP2C19 clopidogrel") == []
 
-    def test_parses_tavily_results_when_key_present(self, monkeypatch):
+    def test_parses_tavily_results_and_uses_bearer_header(self, monkeypatch):
         import requests
 
         monkeypatch.setenv("TAVILY_API_KEY", "tvly-test-key")
+        captured_headers = {}
 
         class FakeResp:
             def raise_for_status(self):
@@ -91,11 +95,40 @@ class TestTavilyClinicalSearch:
                     ]
                 }
 
-        monkeypatch.setattr(requests, "post", lambda *a, **kw: FakeResp())
+        def _fake_post(*a, **kw):
+            captured_headers.update(kw.get("headers") or {})
+            return FakeResp()
+
+        monkeypatch.setattr(requests, "post", _fake_post)
         res = search_tavily_clinical_guidelines("CYP2C19 clopidogrel")
         assert len(res) == 1
+        assert captured_headers.get("Authorization") == "Bearer tvly-test-key"
         assert res[0]["source"] == "Tavily Clinical Search"
         assert "cpicpgx.org" in res[0]["url"]
+
+    def test_clinical_trials_matcher_extracts_nct_id(self, monkeypatch):
+        import requests
+
+        monkeypatch.setenv("TAVILY_API_KEY", "tvly-test-key")
+
+        class FakeTrialResp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return {
+                    "results": [
+                        {
+                            "title": "Study Details | NCT06292117 | CYP2C19 Guided Antiplatelet Therapy | ClinicalTrials.gov",
+                            "url": "https://clinicaltrials.gov/study/NCT06292117",
+                            "content": "Genotype guided clopidogrel dosing in CYP2C19 carriers.",
+                        }
+                    ]
+                }
+
+        monkeypatch.setattr(requests, "post", lambda *a, **kw: FakeTrialResp())
+        tr = search_clinical_trials_tavily("CYP2C19", "clopidogrel")
+        assert tr["trials"][0]["nct_id"] == "NCT06292117"
 
 
 class TestOpenFDALabelAndStructures:

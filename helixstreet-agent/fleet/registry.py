@@ -11,18 +11,18 @@ from . import clients, config
 AGENT_CARDS = [
     {
         "name": "helixstreet_intake",
-        "version": "2.0.0-nebius",
+        "version": "2.2.0-nebius",
         "pipeline": "ingest",
         "model": config.NEMOTRON_NANO_MODEL,
-        "tier": "Tier 1 — High-Throughput Gatekeeper (Nebius Token Factory)",
+        "tier": "Tier 1 — High-Throughput Gatekeeper ($0.06 in / $0.24 out per 1M)",
         "description": (
-            "Compliance gatekeeper: prompt-injection & biosecurity guardrails + HIPAA PII "
-            "de-identification and SHA-256 genome fingerprinting. Runs on NVIDIA Nemotron 3 Nano "
-            "(`nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`) via Nebius Token Factory for low-latency screening."
+            "Compliance gatekeeper: invokes `deidentify_manifest` so prompt-injection screening and "
+            "HIPAA Safe Harbor PII de-identification happen in Python without raw PII entering LLM context, "
+            "and anchors SHA-256 genome fingerprints. Runs on NVIDIA Nemotron 3 Nano (`nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`)."
         ),
         "capabilities": [
-            "nemotron-guardrails",
-            "pii-redaction",
+            "zero-llm-pii-deidentification",
+            "hipaa-safe-harbor-scrubber",
             "genome-fingerprinting",
             "audit-logging",
             "nemotron-3-nano-tier",
@@ -31,13 +31,13 @@ AGENT_CARDS = [
     },
     {
         "name": "helixstreet_variant_caller",
-        "version": "2.1.0-parabricks",
+        "version": "2.2.0-parabricks",
         "pipeline": "ingest",
         "model": config.NEMOTRON_NANO_MODEL,
-        "tier": "Tier 1 — GPU Compute Dispatcher (Nebius Token Factory + NVIDIA Clara Parabricks)",
+        "tier": "Tier 1 — GPU Compute Dispatcher ($0.06 in / $0.24 out per 1M)",
         "description": (
             "Dispatches GPU-accelerated NVIDIA Clara Parabricks (`pbrun deepvariant` via "
-            "`nvcr.io/nvidia/clara/clara-parabricks:4.3.0-1`) on Nebius Serverless GPU Jobs "
+            "`nvcr.io/nvidia/clara/clara-parabricks:4.3.0-1` with `--volume s3://...:/mnt/nebius`) on Nebius Serverless GPU Jobs "
             "(`gpu-l40s-a`); persists async job state to the Memory Bank and yields until VCF arrival."
         ),
         "capabilities": [
@@ -51,18 +51,18 @@ AGENT_CARDS = [
     },
     {
         "name": "helixstreet_analyst",
-        "version": "2.0.0-nebius",
+        "version": "2.2.0-nebius",
         "pipeline": "analysis",
         "model": config.NEMOTRON_ULTRA_MODEL,
-        "tier": "Tier 3 — Deep Scientific Reasoning (Nebius Token Factory)",
+        "tier": "Tier 3 — Deep Scientific Reasoning ($1.00 in / $3.00 out per 1M)",
         "description": (
-            "Parses DeepVariant VCFs, contextualizes variants against 1000 Genomes Phase 3 allele "
-            "frequencies (resolving 0-based vs 1-based coordinate offsets), and seals a per-variant "
-            "Merkle commitment root. Powered by NVIDIA Nemotron 3 Ultra (`nvidia/Nemotron-3-Ultra-550b-a55b`)."
+            "Parses DeepVariant VCFs, contextualizes variants against Ensembl 1000 Genomes Phase 3 global and "
+            "super-population allele frequencies (`ALL`, `AFR`, `AMR`, `EAS`, `EUR`, `SAS`, reconciling 0-based vs 1-based "
+            "coordinates), and seals a per-variant Merkle commitment root. Powered by NVIDIA Nemotron 3 Ultra."
         ),
         "capabilities": [
             "vcf-parsing",
-            "1000-genomes-population-genomics",
+            "1000-genomes-superpopulations",
             "merkle-zkp-commitment",
             "nemotron-3-ultra-reasoning",
         ],
@@ -70,18 +70,19 @@ AGENT_CARDS = [
     },
     {
         "name": "helixstreet_pharmacist",
-        "version": "2.0.0-nebius",
+        "version": "2.2.0-nebius",
         "pipeline": "analysis",
         "model": config.NEMOTRON_ULTRA_MODEL,
-        "tier": "Tier 3 — Clinical Pharmacogenomics Reasoning (Nebius Token Factory)",
+        "tier": "Tier 3 — Clinical Pharmacogenomics Reasoning ($1.00 in / $3.00 out per 1M)",
         "description": (
-            "Screens called variants against a curated CPIC level-A reference for drug-gene "
-            "interactions and attaches live Europe PMC peer-reviewed literature. Powered by "
-            "NVIDIA Nemotron 3 Ultra (`nvidia/Nemotron-3-Ultra-550b-a55b`)."
+            "Screens called variants against CPIC Level-A guidelines (`api.cpicpgx.org`), OpenFDA boxed warnings, "
+            "Europe PMC peer-reviewed literature, and Tavily ClinicalTrials.gov biomarker trial matching (`Authorization: Bearer`). "
+            "Powered by NVIDIA Nemotron 3 Ultra (`nvidia/Nemotron-3-Ultra-550b-a55b`)."
         ),
         "capabilities": [
             "pgx-star-allele-matching",
-            "cpic-guidance",
+            "cpic-rest-api",
+            "tavily-clinical-trials-matcher",
             "europepmc-literature",
             "nemotron-3-ultra-reasoning",
         ],
@@ -89,17 +90,18 @@ AGENT_CARDS = [
     },
     {
         "name": "helixstreet_steward",
-        "version": "2.0.0-nebius",
+        "version": "2.2.0-nebius",
         "pipeline": "analysis",
         "model": config.NEMOTRON_SUPER_MODEL,
-        "tier": "Tier 2 — Structured Synthesis & Provenance (Nebius Token Factory)",
+        "tier": "Tier 2 — Structured Synthesis & Provenance ($0.30 in / $0.90 out per 1M)",
         "description": (
             "Synthesizes analyst & pharmacist findings into a structured Digital Twin in the "
-            "Memory Bank and seals the SHA-256 hash-chained audit ledger. Powered by "
-            "NVIDIA Nemotron 3 Super (`nvidia/nemotron-3-super-120b-a12b`)."
+            "Memory Bank, deterministically verifies the Merkle vault commitment root, and seals the "
+            "SHA-256 hash-chained audit ledger. Powered by NVIDIA Nemotron 3 Super (`nvidia/nemotron-3-super-120b-a12b`)."
         ),
         "capabilities": [
             "memory-bank-write",
+            "deterministic-vault-verification",
             "audit-chain-sealing",
             "nemotron-3-super-synthesis",
         ],

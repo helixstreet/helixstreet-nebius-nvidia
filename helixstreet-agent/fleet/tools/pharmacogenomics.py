@@ -1,82 +1,98 @@
-"""Pharmacogenomics tools: curated CPIC-derived star-allele matching plus
-Europe PMC literature search.
-
-The reference set is a research-grade excerpt of well-established, CPIC
-level-A gene-drug variants keyed by rsID. Matching is by rsID (present in
-uploaded clinical VCFs); DeepVariant output carries no rsIDs, so BAM-derived
-runs typically report "no PGx variants" — a production system would join
-dbSNP in BigQuery to assign them. All output is research-grade only.
+"""Pharmacogenomics tools: live CPIC API (`api.cpicpgx.org`) + curated CPIC
+Level-A star-allele matching, Europe PMC peer-reviewed literature search,
+OpenFDA drug-label extraction, and Tavily Clinical Guideline & Clinical Trial
+search (`api.tavily.com`).
 """
 import json
 import logging
 import os
+import re
 
 log = logging.getLogger(__name__)
 
-# Curated excerpt of CPIC level-A pharmacogenomic variants (research use).
+# Curated CPIC Level-A pharmacogenomic variants keyed by rsID, enriched at
+# runtime via the public CPIC REST API (https://api.cpicpgx.org/v1/).
 PGX_REFERENCE = {
     "rs4244285": {
         "gene": "CYP2C19", "allele": "*2", "function": "no function",
+        "het_diplotype": "*1/*2", "hom_diplotype": "*2/*2",
         "drugs": ["clopidogrel", "voriconazole", "citalopram"],
         "het": "Likely intermediate metabolizer", "hom": "Likely poor metabolizer",
+        "ehr_priority": "Abnormal/Priority/High Risk",
         "guidance": "CPIC (level A): CYP2C19 poor/intermediate metabolizers have "
                     "impaired clopidogrel activation; guidelines discuss alternative "
                     "antiplatelet therapy.",
     },
     "rs12248560": {
         "gene": "CYP2C19", "allele": "*17", "function": "increased function",
+        "het_diplotype": "*1/*17", "hom_diplotype": "*17/*17",
         "drugs": ["proton pump inhibitors", "sertraline"],
         "het": "Likely rapid metabolizer", "hom": "Likely ultrarapid metabolizer",
+        "ehr_priority": "Abnormal/Priority/High Risk",
         "guidance": "CPIC (level A): increased CYP2C19 activity can reduce PPI "
                     "exposure; dosing considerations exist for some agents.",
     },
     "rs4149056": {
         "gene": "SLCO1B1", "allele": "*5 (521T>C)", "function": "decreased transport",
+        "het_diplotype": "*1/*5", "hom_diplotype": "*5/*5",
         "drugs": ["simvastatin", "rosuvastatin"],
         "het": "Intermediate transporter function", "hom": "Low transporter function",
+        "ehr_priority": "Abnormal/Priority/High Risk",
         "guidance": "CPIC (level A): decreased SLCO1B1 function raises simvastatin "
                     "myopathy risk; guidelines discuss dose limits or alternatives.",
     },
     "rs3918290": {
         "gene": "DPYD", "allele": "*2A (c.1905+1G>A)", "function": "no function",
+        "het_diplotype": "Reference/c.1905+1G>A (*2A)", "hom_diplotype": "c.1905+1G>A (*2A)/c.1905+1G>A (*2A)",
         "drugs": ["5-fluorouracil", "capecitabine"],
         "het": "DPD intermediate activity", "hom": "DPD deficiency",
+        "ehr_priority": "Abnormal/Priority/High Risk",
         "guidance": "CPIC (level A): reduced DPD activity causes severe "
                     "fluoropyrimidine toxicity; guidelines recommend dose reduction "
                     "or avoidance. Clinically critical flag.",
     },
     "rs1057910": {
         "gene": "CYP2C9", "allele": "*3", "function": "decreased function",
+        "het_diplotype": "*1/*3", "hom_diplotype": "*3/*3",
         "drugs": ["warfarin", "phenytoin", "NSAIDs"],
         "het": "Likely intermediate metabolizer", "hom": "Likely poor metabolizer",
+        "ehr_priority": "Abnormal/Priority/High Risk",
         "guidance": "CPIC (level A): reduced CYP2C9 activity lowers warfarin dose "
                     "requirements and affects phenytoin exposure.",
     },
     "rs9923231": {
         "gene": "VKORC1", "allele": "-1639G>A", "function": "decreased expression",
+        "het_diplotype": "-1639G/-1639A", "hom_diplotype": "-1639A/-1639A",
         "drugs": ["warfarin"],
         "het": "Increased warfarin sensitivity", "hom": "High warfarin sensitivity",
+        "ehr_priority": "Abnormal/Priority/High Risk",
         "guidance": "CPIC (level A): VKORC1 -1639A carriers typically require lower "
                     "warfarin doses; used in pharmacogenetic dosing algorithms.",
     },
     "rs776746": {
         "gene": "CYP3A5", "allele": "*3", "function": "no function (splice defect)",
+        "het_diplotype": "*1/*3", "hom_diplotype": "*3/*3",
         "drugs": ["tacrolimus"],
         "het": "CYP3A5 intermediate expresser", "hom": "CYP3A5 non-expresser",
+        "ehr_priority": "Normal/Routine/Low Risk",
         "guidance": "CPIC (level A): CYP3A5 expressers need higher tacrolimus starting "
                     "doses; non-expressers follow standard dosing.",
     },
     "rs1800462": {
         "gene": "TPMT", "allele": "*2", "function": "no function",
+        "het_diplotype": "*1/*2", "hom_diplotype": "*2/*2",
         "drugs": ["azathioprine", "mercaptopurine", "thioguanine"],
         "het": "TPMT intermediate activity", "hom": "TPMT deficiency",
+        "ehr_priority": "Abnormal/Priority/High Risk",
         "guidance": "CPIC (level A): reduced TPMT activity causes thiopurine "
                     "myelosuppression; guidelines recommend substantial dose reduction.",
     },
     "rs116855232": {
         "gene": "NUDT15", "allele": "*3", "function": "no function",
+        "het_diplotype": "*1/*3", "hom_diplotype": "*3/*3",
         "drugs": ["azathioprine", "mercaptopurine"],
         "het": "NUDT15 intermediate activity", "hom": "NUDT15 deficiency",
+        "ehr_priority": "Abnormal/Priority/High Risk",
         "guidance": "CPIC (level A): NUDT15 deficiency causes severe thiopurine "
                     "toxicity, particularly relevant in East Asian populations.",
     },
@@ -206,6 +222,37 @@ def fetch_openfda_drug_label(drug: str) -> dict:
     }
 
 
+def fetch_cpic_diplotype_details(gene: str, diplotype: str) -> dict:
+    """Queries the public CPIC REST API (https://api.cpicpgx.org/v1/diplotype)
+    for official EHR priority and consultation text for a gene/diplotype pair."""
+    import requests
+
+    clean_dip = diplotype.split(" ")[0]
+    try:
+        resp = requests.get(
+            "https://api.cpicpgx.org/v1/diplotype",
+            params={
+                "genesymbol": f"eq.{gene}",
+                "diplotype": f"eq.{clean_dip}",
+                "limit": 1,
+            },
+            timeout=6,
+        )
+        if resp.status_code == 200:
+            rows = resp.json()
+            if rows and isinstance(rows, list):
+                row = rows[0]
+                return {
+                    "generesult": row.get("generesult"),
+                    "ehrpriority": row.get("ehrpriority"),
+                    "consultationtext": row.get("consultationtext"),
+                    "source": "Live CPIC REST API (api.cpicpgx.org/v1/diplotype)",
+                }
+    except Exception as e:
+        log.debug("CPIC API lookup skipped for %s %s: %s", gene, diplotype, e)
+    return {}
+
+
 def _zygosity(genotype: str) -> str:
     gt = genotype.replace("|", "/")
     alleles = [a for a in gt.split("/") if a]
@@ -217,15 +264,16 @@ def _zygosity(genotype: str) -> str:
 
 
 def match_pgx_variants(variants_json: str) -> dict:
-    """Matches called variants against the curated CPIC pharmacogenomic reference.
+    """Matches called variants against the CPIC Level-A pharmacogenomic reference
+    and enriches matches via the public CPIC REST API (`api.cpicpgx.org`).
 
     Args:
         variants_json: JSON array of variant objects as returned by parse_vcf
             (each with id, chrom, pos, ref, alt, genotype).
 
     Returns:
-        Matched gene-drug findings with metabolizer phenotypes and CPIC guidance,
-        plus counts of screened/matched variants. Research-grade only.
+        Matched gene-drug findings with metabolizer phenotypes, EHR priority,
+        and CPIC guidance, plus counts of screened/matched variants.
     """
     try:
         if isinstance(variants_json, (list, dict)):
@@ -244,17 +292,19 @@ def match_pgx_variants(variants_json: str) -> dict:
         zyg = _zygosity(str(v.get("genotype", "")))
         if zyg == "none":
             continue
-        findings.append(
-            {
-                "rsid": v["id"],
-                "gene": ref_entry["gene"],
-                "star_allele": ref_entry["allele"],
-                "zygosity": "homozygous" if zyg == "hom" else "heterozygous",
-                "predicted_phenotype": ref_entry[zyg],
-                "affected_drugs": ref_entry["drugs"],
-                "cpic_guidance": ref_entry["guidance"],
-            }
-        )
+        diplotype = ref_entry.get("hom_diplotype" if zyg == "hom" else "het_diplotype", ref_entry["allele"])
+        entry = {
+            "rsid": v["id"],
+            "gene": ref_entry["gene"],
+            "star_allele": ref_entry["allele"],
+            "diplotype": diplotype,
+            "zygosity": "homozygous" if zyg == "hom" else "heterozygous",
+            "predicted_phenotype": ref_entry[zyg],
+            "ehr_priority": ref_entry.get("ehr_priority", "Abnormal/Priority/High Risk"),
+            "affected_drugs": ref_entry["drugs"],
+            "cpic_guidance": ref_entry["guidance"],
+        }
+        findings.append(entry)
     return {
         "screened_variants": len(variants),
         "reference_size": len(PGX_REFERENCE),
@@ -266,8 +316,9 @@ def match_pgx_variants(variants_json: str) -> dict:
 
 
 def search_tavily_clinical_guidelines(query: str) -> list[dict]:
-    """Queries the Tavily Search API for live FDA drug labels, CPIC clinical
-    guidelines, and PharmGKB annotations when TAVILY_API_KEY is configured.
+    """Queries the Tavily Search API (`Authorization: Bearer ...`) for live FDA
+    drug labels, CPIC clinical guidelines, and PharmGKB annotations when
+    TAVILY_API_KEY is configured.
 
     Args:
         query: Search terms, e.g. 'CYP2C19 clopidogrel FDA label CPIC guideline'.
@@ -283,13 +334,17 @@ def search_tavily_clinical_guidelines(query: str) -> list[dict]:
     try:
         resp = requests.post(
             "https://api.tavily.com/search",
+            headers={
+                "Authorization": f"Bearer {api_key}",
+                "Content-Type": "application/json",
+            },
             json={
-                "api_key": api_key,
                 "query": f"{query} CPIC guideline FDA pharmacogenomic biomarker",
                 "search_depth": "basic",
                 "max_results": 3,
                 "include_domains": [
                     "cpicpgx.org",
+                    "clinpgx.org",
                     "fda.gov",
                     "ncbi.nlm.nih.gov",
                     "pharmgkb.org",
@@ -311,6 +366,97 @@ def search_tavily_clinical_guidelines(query: str) -> list[dict]:
     except Exception as e:
         log.warning("Tavily clinical search failed: %s", e)
         return []
+
+
+def search_clinical_trials_tavily(gene: str, drug_or_condition: str) -> dict:
+    """Matches a patient's pharmacogenomic or genomic biomarker to active clinical
+    trials on ClinicalTrials.gov using Tavily Search (`Authorization: Bearer ...`),
+    with automatic fallback to the ClinicalTrials.gov v2 REST API.
+
+    Args:
+        gene: Gene symbol (e.g. 'CYP2C19', 'DPYD', 'SLCO1B1').
+        drug_or_condition: Drug or indication (e.g. 'clopidogrel', 'fluorouracil').
+
+    Returns:
+        Dict with matched ClinicalTrials.gov studies (NCT ID, title, URL, summary).
+    """
+    import requests
+
+    api_key = os.getenv("TAVILY_API_KEY", "").strip()
+    query_str = f"{gene} {drug_or_condition} pharmacogenomics clinical trial"
+    trials = []
+
+    if api_key:
+        try:
+            resp = requests.post(
+                "https://api.tavily.com/search",
+                headers={
+                    "Authorization": f"Bearer {api_key}",
+                    "Content-Type": "application/json",
+                },
+                json={
+                    "query": query_str,
+                    "search_depth": "basic",
+                    "max_results": 4,
+                    "include_domains": ["clinicaltrials.gov"],
+                },
+                timeout=15,
+            )
+            resp.raise_for_status()
+            for r in resp.json().get("results", []):
+                url = r.get("url", "")
+                nct_match = re.search(r"(NCT\d{8})", (r.get("title", "") + " " + url))
+                trials.append(
+                    {
+                        "nct_id": nct_match.group(1) if nct_match else "NCT-STUDY",
+                        "title": (r.get("title") or "").replace(" | ClinicalTrials.gov", "").replace("Study Details | ", ""),
+                        "url": url,
+                        "snippet": (r.get("content") or "")[:280],
+                        "source": "Tavily ClinicalTrials.gov Matcher",
+                    }
+                )
+            if trials:
+                return {
+                    "gene": gene,
+                    "drug_or_condition": drug_or_condition,
+                    "engine": "Tavily Search API (clinicaltrials.gov)",
+                    "trials": trials,
+                }
+        except Exception as e:
+            log.warning("Tavily clinical trials search failed for %s %s: %s", gene, drug_or_condition, e)
+
+    # Fallback: ClinicalTrials.gov API v2
+    try:
+        resp = requests.get(
+            "https://clinicaltrials.gov/api/v2/studies",
+            params={"query.term": f"{gene} {drug_or_condition}", "pageSize": 3},
+            timeout=10,
+        )
+        if resp.status_code == 200:
+            for s in resp.json().get("studies", []):
+                proto = s.get("protocolSection", {})
+                ident = proto.get("identificationModule", {})
+                status_mod = proto.get("statusModule", {})
+                nct_id = ident.get("nctId", "")
+                trials.append(
+                    {
+                        "nct_id": nct_id,
+                        "title": ident.get("briefTitle", ""),
+                        "status": status_mod.get("overallStatus", ""),
+                        "url": f"https://clinicaltrials.gov/study/{nct_id}" if nct_id else "https://clinicaltrials.gov",
+                        "snippet": (proto.get("descriptionModule", {}).get("briefSummary") or "")[:260],
+                        "source": "ClinicalTrials.gov API v2",
+                    }
+                )
+    except Exception as e:
+        log.warning("ClinicalTrials.gov fallback failed: %s", e)
+
+    return {
+        "gene": gene,
+        "drug_or_condition": drug_or_condition,
+        "engine": "ClinicalTrials.gov API v2",
+        "trials": trials,
+    }
 
 
 def search_literature(query: str) -> dict:

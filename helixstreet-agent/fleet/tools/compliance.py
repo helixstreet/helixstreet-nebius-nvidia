@@ -1,46 +1,56 @@
-"""Compliance tools: HIPAA PII de-identification + Nemotron Guardrails screening."""
+"""Compliance tools: deterministic HIPAA Safe Harbor PII de-identification and
+intake prompt-injection screening."""
+import json
 import logging
 import re
 
-from .. import clients, config
+from .gcs import read_gcs_text, write_gcs_text
 
 log = logging.getLogger(__name__)
 
-_INFO_TYPES = [
-    "PERSON_NAME",
-    "DATE_OF_BIRTH",
-    "EMAIL_ADDRESS",
-    "PHONE_NUMBER",
-    "US_SOCIAL_SECURITY_NUMBER",
-    "STREET_ADDRESS",
-]
+_PII_JSON_KEYS = {
+    "patient_name": "[PERSON_NAME]",
+    "name": "[PERSON_NAME]",
+    "full_name": "[PERSON_NAME]",
+    "date_of_birth": "[DATE_OF_BIRTH]",
+    "dob": "[DATE_OF_BIRTH]",
+    "contact_email": "[EMAIL_ADDRESS]",
+    "email": "[EMAIL_ADDRESS]",
+    "phone": "[PHONE_NUMBER]",
+    "phone_number": "[PHONE_NUMBER]",
+    "ssn": "[US_SOCIAL_SECURITY_NUMBER]",
+    "social_security_number": "[US_SOCIAL_SECURITY_NUMBER]",
+    "address": "[STREET_ADDRESS]",
+    "street_address": "[STREET_ADDRESS]",
+    "mrn": "[MEDICAL_RECORD_NUMBER]",
+}
 
-# Comprehensive HIPAA PII patterns for deterministic local/Nebius redaction.
+# Comprehensive HIPAA PII patterns for deterministic regex redaction
+# (handles both normal JSON quotes and double-escaped JSON strings).
 _PII_PATTERNS = [
-    # JSON field values for common manifest PII keys
     (
-        re.compile(r'("patient_name"\s*:\s*)"[^"]+"', re.IGNORECASE),
-        r'\1"[PERSON_NAME]"',
+        re.compile(r'(\\?"patient_name\\?"\s*:\s*\\?")[^"\\]+(\\?")', re.IGNORECASE),
+        r"\1[PERSON_NAME]\2",
     ),
     (
-        re.compile(r'("date_of_birth"\s*:\s*)"[^"]+"', re.IGNORECASE),
-        r'\1"[DATE_OF_BIRTH]"',
+        re.compile(r'(\\?"date_of_birth\\?"\s*:\s*\\?")[^"\\]+(\\?")', re.IGNORECASE),
+        r"\1[DATE_OF_BIRTH]\2",
     ),
     (
-        re.compile(r'("contact_email"\s*:\s*)"[^"]+"', re.IGNORECASE),
-        r'\1"[EMAIL_ADDRESS]"',
+        re.compile(r'(\\?"contact_email\\?"\s*:\s*\\?")[^"\\]+(\\?")', re.IGNORECASE),
+        r"\1[EMAIL_ADDRESS]\2",
     ),
     (
-        re.compile(r'("phone(?:_number)?"\s*:\s*)"[^"]+"', re.IGNORECASE),
-        r'\1"[PHONE_NUMBER]"',
+        re.compile(r'(\\?"phone(?:_number)?\\?"\s*:\s*\\?")[^"\\]+(\\?")', re.IGNORECASE),
+        r"\1[PHONE_NUMBER]\2",
     ),
     (
-        re.compile(r'("ssn"\s*:\s*)"[^"]+"', re.IGNORECASE),
-        r'\1"[US_SOCIAL_SECURITY_NUMBER]"',
+        re.compile(r'(\\?"ssn\\?"\s*:\s*\\?")[^"\\]+(\\?")', re.IGNORECASE),
+        r"\1[US_SOCIAL_SECURITY_NUMBER]\2",
     ),
     (
-        re.compile(r'("address"\s*:\s*)"[^"]+"', re.IGNORECASE),
-        r'\1"[STREET_ADDRESS]"',
+        re.compile(r'(\\?"address\\?"\s*:\s*\\?")[^"\\]+(\\?")', re.IGNORECASE),
+        r"\1[STREET_ADDRESS]\2",
     ),
     # Free-text patterns
     (re.compile(r"\b\d{2}/\d{2}/\d{4}\b"), "[DATE_OF_BIRTH]"),
@@ -67,30 +77,23 @@ def scrub_pii(text: str) -> dict:
     Returns:
         The redacted text and which redaction engine was used.
     """
-    if config.STATE_BACKEND == "gcp":
-        try:
-            response = clients.dlp().deidentify_content(
-                request={
-                    "parent": f"projects/{config.PROJECT_ID}/locations/global",
-                    "deidentify_config": {
-                        "info_type_transformations": {
-                            "transformations": [
-                                {"primitive_transformation": {"replace_with_info_type_config": {}}}
-                            ]
-                        }
-                    },
-                    "inspect_config": {"info_types": [{"name": n} for n in _INFO_TYPES]},
-                    "item": {"value": text},
-                }
-            )
-            return {"engine": "cloud_dlp", "redacted_text": response.item.value}
-        except Exception as e:
-            log.warning("Cloud DLP unavailable, using Nebius Nemotron DLP scrubber: %s", e)
+    raw = text or ""
+    # First attempt structured JSON key scrubbing if valid JSON dict
+    try:
+        parsed = json.loads(raw)
+        if isinstance(parsed, dict):
+            for k in list(parsed.keys()):
+                norm_k = k.strip().lower()
+                if norm_k in _PII_JSON_KEYS:
+                    parsed[k] = _PII_JSON_KEYS[norm_k]
+            raw = json.dumps(parsed, indent=2)
+    except Exception:
+        pass
 
-    redacted = text
+    redacted = raw
     for pattern, repl in _PII_PATTERNS:
         redacted = pattern.sub(repl, redacted)
-    return {"engine": "nemotron_guardrails_dlp", "redacted_text": redacted}
+    return {"engine": "hipaa_safe_harbor_scrubber", "redacted_text": redacted}
 
 
 def screen_with_model_armor(text: str) -> dict:
@@ -107,38 +110,59 @@ def screen_with_model_armor(text: str) -> dict:
         if pat.search(text or ""):
             return {
                 "verdict": "blocked",
-                "engine": "nemotron_guardrails",
+                "engine": "intake_safety_screen",
                 "detail": f"Matched guardrail pattern: {pat.pattern}",
             }
 
-    if config.MODEL_ARMOR_TEMPLATE and config.STATE_BACKEND == "gcp":
-        try:
-            import google.auth
-            import google.auth.transport.requests
-            import requests
-
-            creds, _ = google.auth.default(scopes=["https://www.googleapis.com/auth/cloud-platform"])
-            creds.refresh(google.auth.transport.requests.Request())
-            location = config.MODEL_ARMOR_TEMPLATE.split("/locations/")[1].split("/")[0]
-            url = (
-                f"https://modelarmor.{location}.rep.googleapis.com/v1/"
-                f"{config.MODEL_ARMOR_TEMPLATE}:sanitizeUserPrompt"
-            )
-            resp = requests.post(
-                url,
-                json={"userPromptData": {"text": text[:10000]}},
-                headers={"Authorization": f"Bearer {creds.token}"},
-                timeout=30,
-            )
-            resp.raise_for_status()
-            result = resp.json().get("sanitizationResult", {})
-            match = result.get("filterMatchState", "NO_MATCH_FOUND")
-            return {"verdict": "blocked" if match == "MATCH_FOUND" else "clean", "detail": match}
-        except Exception as e:
-            return {"verdict": "error", "reason": str(e)}
-
     return {
         "verdict": "clean",
-        "engine": "nemotron_guardrails",
+        "engine": "intake_safety_screen",
         "detail": "NO_MATCH_FOUND",
+    }
+
+
+def deidentify_manifest(manifest_uri: str) -> dict:
+    """Reads, screens, and de-identifies a patient manifest directly in storage
+    so raw PII never enters any LLM prompt or context window.
+
+    Args:
+        manifest_uri: Full gs:// or s3:// URI of the patient manifest.json.
+
+    Returns:
+        Status dict with verdict, scrubbed_uri, engine, and the already-redacted
+        manifest text.
+    """
+    raw = read_gcs_text(manifest_uri)
+    if raw.startswith("ERROR:"):
+        return {
+            "status": "missing",
+            "manifest_uri": manifest_uri,
+            "detail": raw,
+        }
+
+    screen = screen_with_model_armor(raw)
+    if screen["verdict"] == "blocked":
+        return {
+            "status": "blocked",
+            "verdict": "blocked",
+            "engine": screen["engine"],
+            "detail": screen["detail"],
+            "manifest_uri": manifest_uri,
+        }
+
+    scrubbed = scrub_pii(raw)
+    if manifest_uri.endswith(".json"):
+        scrubbed_uri = manifest_uri[:-5] + ".scrubbed.json"
+    else:
+        scrubbed_uri = manifest_uri + ".scrubbed.json"
+
+    write_gcs_text(scrubbed_uri, scrubbed["redacted_text"])
+    return {
+        "status": "scrubbed",
+        "verdict": "clean",
+        "engine": scrubbed["engine"],
+        "safety_screen": screen["engine"],
+        "manifest_uri": manifest_uri,
+        "scrubbed_uri": scrubbed_uri,
+        "redacted_text": scrubbed["redacted_text"],
     }
