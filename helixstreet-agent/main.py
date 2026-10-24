@@ -215,6 +215,32 @@ async def federated_cohort_query_endpoint(request: Request):
     )
 
 
+@app.post("/a2a/negotiate")
+async def a2a_negotiate_endpoint(request: Request):
+    """Agent-to-Agent (A2A) Zero-Knowledge Regimen Negotiation (`Hospital EHR Agent` <-> `Patient Living Twin`)."""
+    body = await request.json()
+    return cv.negotiate_a2a_polypharmacy_regimen(
+        patient_id=body.get("patient_id", "pgx-demo-001"),
+        requester=body.get("requester", "usb-university-hospital-basel"),
+        purpose=body.get("purpose", "inpatient_prescribing_safety"),
+        hospital_agent_did=body.get("hospital_agent_did", "did:web:usb.ch:cardiology-icu-agent"),
+        clinical_protocol=body.get("clinical_protocol", "Post-PCI Acute Coronary Syndrome + ICU Stabilization Regimen"),
+        proposed_drugs=body.get("proposed_drugs"),
+    )
+
+
+@app.get("/twin/timeline/{patient_id}")
+async def twin_timeline_endpoint(patient_id: str):
+    """10-Year Lifelong Biological Time-Machine (2026–2036)."""
+    return cv.get_lifelong_timeline(patient_id=patient_id)
+
+
+@app.get("/wallet/vc/{patient_id}")
+async def wallet_vc_endpoint(patient_id: str):
+    """W3C Verifiable Credential & EHDS 2027 Sovereign Genome Wallet Pass."""
+    return cv.build_w3c_verifiable_credential(patient_id=patient_id)
+
+
 def _parse_gcs_event(body: dict) -> tuple[str, str, str]:
     """Accepts direct storage event payloads, Pub/Sub push envelopes, or S3 event notifications."""
     if "bucket" in body and "name" in body:  # direct storage event data

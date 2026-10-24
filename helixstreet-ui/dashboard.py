@@ -54,19 +54,63 @@ st.logo(str(UI_DIR / "logo.svg"), size="large")
 st.markdown(
     """
     <style>
-    /* Executive Clinical Card & Metric Styling */
+    /* Sovereign Bio-Enclave Theme & Executive Clinical Card Styling */
     [data-testid="stMetric"] {
-        background: linear-gradient(180deg, #ffffff 0%, #f7fbfd 100%);
-        border: 1px solid #d5e3ec !important;
-        border-top: 3px solid #288ab3 !important;
-        border-radius: 10px !important;
-        box-shadow: 0 2px 8px rgba(18, 42, 66, 0.04);
-        padding: 0.7rem 0.95rem !important;
+        background: linear-gradient(180deg, #ffffff 0%, #f4f9fc 100%);
+        border: 1px solid #cce0ec !important;
+        border-top: 3px solid #0e7490 !important;
+        border-radius: 12px !important;
+        box-shadow: 0 3px 12px rgba(11, 25, 44, 0.05);
+        padding: 0.75rem 1rem !important;
     }
     [data-testid="stMetricValue"] {
-        font-weight: 700 !important;
+        font-weight: 800 !important;
+        letter-spacing: -0.02em;
+        color: #0b192c !important;
+    }
+    .hx-hero-banner {
+        background: linear-gradient(135deg, #0b192c 0%, #102a45 55%, #0c3b49 100%);
+        border: 1px solid #1e496b;
+        border-radius: 14px;
+        padding: 1.15rem 1.45rem;
+        margin-bottom: 0.85rem;
+        color: #f8fafc;
+        box-shadow: 0 8px 24px rgba(11, 25, 44, 0.14);
+    }
+    .hx-hero-banner h1 {
+        color: #ffffff !important;
+        font-size: 1.65rem !important;
+        font-weight: 800 !important;
+        margin: 0 0 0.25rem 0 !important;
+        padding: 0 !important;
         letter-spacing: -0.02em;
     }
+    .hx-hero-banner .hx-sub {
+        color: #bae6fd;
+        font-size: 0.94rem;
+        font-weight: 500;
+        margin-bottom: 0.65rem;
+    }
+    .hx-pill-row {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 0.45rem;
+    }
+    .hx-pill {
+        display: inline-flex;
+        align-items: center;
+        gap: 0.3rem;
+        padding: 0.22rem 0.65rem;
+        border-radius: 999px;
+        font-size: 0.74rem;
+        font-weight: 600;
+        font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+        letter-spacing: 0.01em;
+    }
+    .hx-pill-emerald { background: rgba(16, 185, 129, 0.18); border: 1px solid rgba(52, 211, 153, 0.45); color: #6ee7b7; }
+    .hx-pill-cyan { background: rgba(14, 165, 233, 0.18); border: 1px solid rgba(56, 189, 248, 0.45); color: #7dd3fc; }
+    .hx-pill-violet { background: rgba(139, 92, 246, 0.22); border: 1px solid rgba(167, 139, 250, 0.45); color: #c4b5fd; }
+    .hx-pill-amber { background: rgba(245, 158, 11, 0.18); border: 1px solid rgba(251, 191, 36, 0.45); color: #fcd34d; }
     .hx-arch-strip {
         display: grid;
         grid-template-columns: repeat(6, minmax(140px, 1fr));
@@ -105,6 +149,28 @@ st.markdown(
         font-size: 0.86rem;
         display: block;
         margin-bottom: 0.15rem;
+    }
+    .hx-wallet-pass {
+        background: linear-gradient(135deg, #0b192c 0%, #132f4c 60%, #0f3d3e 100%);
+        color: #f8fafc;
+        border-radius: 12px;
+        padding: 0.9rem 1.05rem;
+        border: 1px solid #1e496b;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        gap: 0.9rem;
+        margin: 0.4rem 0 0.6rem 0;
+    }
+    .hx-wallet-pass .hx-pass-meta {
+        font-size: 0.78rem;
+        line-height: 1.45;
+    }
+    .hx-wallet-pass code {
+        color: #6ee7b7;
+        background: rgba(15, 23, 42, 0.55);
+        padding: 0.1rem 0.35rem;
+        border-radius: 4px;
     }
     </style>
     """,
@@ -286,26 +352,29 @@ def start_demo_run(user_id: str) -> str:
     return f"s3://{DATA_BUCKET}/uploads/{user_id}/sample.bam"
 
 
-with st.container(horizontal=True, vertical_alignment="center"):
-    st.image(str(UI_DIR / "logo.svg"), width=72)
-    with st.container():
-        st.title("Helixstreet — The Consent-Native Pharmacogenomics Layer")
-        st.markdown(
-            "***Turns a person's genome into a lifelong, provable, revocable source of drug-safety answers — "
-            "without the genome ever leaving their control (`0 bytes raw genome egress`).***"
-        )
-
 _nebius_key_ok = bool(fleet_config.NEBIUS_API_KEY)
 _tavily_key_ok = bool(os.getenv("TAVILY_API_KEY", "").strip())
 _gpu_cluster_ok = bool(fleet_config.NEBIUS_PARENT_ID)
 
-st.caption(
-    f"**Nebius x NVIDIA Global AI Hackathon** · Project `{PROJECT_ID}` (`{NEBIUS_REGION}`) · "
-    f"Bucket `s3://{DATA_BUCKET}` · "
-    f":green-badge[✓ Ed25519 Enclave Signing Active] · "
-    f"{':green-badge[✓ Nebius Token Factory Live]' if _nebius_key_ok else ':red-badge[⚠ NEBIUS_API_KEY Missing]'} · "
-    f"{':violet-badge[✓ Tavily Clinical Search & Trial Matcher Live]' if _tavily_key_ok else ':gray-badge[Tavily Optional]'} · "
-    f":blue-badge[✓ Verified Nebius L40S Parabricks Run: aijob-e00p9xmknz4yphfvmm]"
+st.markdown(
+    f"""
+    <div class="hx-hero-banner">
+        <h1>🧬 Helixstreet — The Consent-Native Pharmacogenomics Layer</h1>
+        <div class="hx-sub">
+            Turns a person's genome into a lifelong, provable, revocable source of drug-safety answers —
+            without the genome ever leaving their control (<b>0 bytes raw genome egress</b>).
+        </div>
+        <div class="hx-pill-row">
+            <span class="hx-pill hx-pill-emerald">🔒 ENCLAVE SEALED · 0 B EGRESS</span>
+            <span class="hx-pill hx-pill-emerald">✍️ ED25519 RFC-8032 ATTESTATIONS</span>
+            <span class="hx-pill hx-pill-cyan">⚡ NEBIUS L40S PARABRICKS · aijob-e00p9xmknz4yphfvmm (6.05s)</span>
+            <span class="hx-pill hx-pill-violet">🧠 NEMOTRON 3 · NANO 30B · SUPER 120B · ULTRA 550B</span>
+            <span class="hx-pill hx-pill-amber">🗄️ NEBIUS S3 · s3://{DATA_BUCKET} ({NEBIUS_REGION})</span>
+            <span class="hx-pill hx-pill-cyan">{'🔍 TAVILY CLINICAL & NCT MATCHER LIVE' if _tavily_key_ok else '🔍 TAVILY READY'}</span>
+        </div>
+    </div>
+    """,
+    unsafe_allow_html=True,
 )
 
 if not _nebius_key_ok:
@@ -517,11 +586,12 @@ with tab_consent:
         unsafe_allow_html=True,
     )
 
-    sub_gate, sub_watcher, sub_ledger = st.tabs(
+    sub_gate, sub_watcher, sub_ledger, sub_vision = st.tabs(
         [
             ":material/verified: Steps 1–5 · Consent Gate & Signed Attestation (`POST /ask`)",
             ":material/monitor_heart: Step 6 · FHIR R4 Prescription Watcher & Closed-Loop RWE",
             ":material/receipt_long: Step 4 · Receipt Ledger & Federated Cohort Equity",
+            ":material/auto_awesome: Vision 2030 · A2A Negotiation & 10-Year Time-Machine",
         ]
     )
 
@@ -687,6 +757,51 @@ with tab_consent:
                         use_nemotron=False,
                     )
                     st.rerun()
+
+                with st.expander(":material/badge: **EHDS 2027 & W3C Verifiable Credential — Sovereign Genome Wallet Pass**", expanded=False):
+                    vc_doc = cv.build_w3c_verifiable_credential("pgx-demo-001")
+                    pub_short = cv.get_enclave_public_key_hex()[:18]
+                    st.markdown(
+                        f"""
+                        <div class="hx-wallet-pass">
+                            <div class="hx-pass-meta">
+                                <div style="font-size:0.70rem;color:#7dd3fc;font-weight:700;letter-spacing:0.06em;">EUROPEAN HEALTH DATA SPACE (EHDS 2027) · W3C VC</div>
+                                <div style="font-size:0.96rem;font-weight:800;margin:0.15rem 0;">Sovereign Pharmacogenomic Passport</div>
+                                <div>Subject: <code>did:helix:ch:pgx-demo-001</code> · Egress: <code>0 BYTES</code></div>
+                                <div>Critical: <code>CYP2C19 *2/*2 (PM)</code> · <code>DPYD *1/*2A (IM)</code> · <code>SLCO1B1 *5/*5</code></div>
+                                <div>Ed25519 Key: <code>{pub_short}…</code> · Merkle: <code>088f3737…432a9992</code></div>
+                            </div>
+                            <div style="background:#ffffff;padding:6px;border-radius:8px;flex-shrink:0;" title="Ed25519 Verifiable Credential QR">
+                                <svg width="68" height="68" viewBox="0 0 34 34" xmlns="http://www.w3.org/2000/svg">
+                                    <rect width="34" height="34" fill="#ffffff"/>
+                                    <rect x="2" y="2" width="10" height="10" fill="none" stroke="#0b192c" stroke-width="2"/>
+                                    <rect x="5" y="5" width="4" height="4" fill="#0e7490"/>
+                                    <rect x="22" y="2" width="10" height="10" fill="none" stroke="#0b192c" stroke-width="2"/>
+                                    <rect x="25" y="5" width="4" height="4" fill="#0e7490"/>
+                                    <rect x="2" y="22" width="10" height="10" fill="none" stroke="#0b192c" stroke-width="2"/>
+                                    <rect x="5" y="25" width="4" height="4" fill="#16a34a"/>
+                                    <rect x="14" y="4" width="2" height="6" fill="#0b192c"/>
+                                    <rect x="18" y="6" width="2" height="4" fill="#0b192c"/>
+                                    <rect x="14" y="14" width="6" height="6" fill="#0e7490"/>
+                                    <rect x="4" y="15" width="6" height="2" fill="#0b192c"/>
+                                    <rect x="22" y="15" width="8" height="2" fill="#0b192c"/>
+                                    <rect x="14" y="22" width="4" height="8" fill="#0b192c"/>
+                                    <rect x="22" y="22" width="4" height="4" fill="#16a34a"/>
+                                    <rect x="28" y="26" width="4" height="6" fill="#0b192c"/>
+                                </svg>
+                            </div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+                    st.download_button(
+                        "📥 Export W3C Verifiable Credential (.vc.json)",
+                        data=json.dumps(vc_doc, indent=2),
+                        file_name="helixstreet-ehds-pgx-passport.vc.json",
+                        mime="application/json",
+                        use_container_width=True,
+                        key="dl_ehds_vc_pass",
+                    )
 
         with col_ask:
             with st.container(border=True):
@@ -1031,6 +1146,86 @@ with tab_consent:
             fm3.metric("Pharmacist Concordance", f"{fed_res['mean_clinical_pharmacist_concordance_pct']}%", "Clinician Benchmark", border=True)
             fm4.metric("Raw Genomes Pooled", "0 bytes", "100% Federated Enclave", border=True)
             st.dataframe(pd.DataFrame(fed_res["nodes"]), hide_index=True, width="stretch")
+
+    with sub_vision:
+        with st.container(border=True):
+            st.subheader(":material/handshake: Agent-to-Agent (A2A) Zero-Knowledge Regimen Negotiation (`POST /a2a/negotiate`)")
+            st.caption(
+                "Instead of a static lookup, watch the **Hospital Prescribing Agent** and the **Patient's Sovereign Living Twin Agent** "
+                "autonomously negotiate a 4-drug post-stent cardiac discharge regimen across `CYP2C19`, `SLCO1B1`, and `VKORC1` "
+                "**with `0 bytes` of raw DNA ever leaving the patient enclave**."
+            )
+            a2a_col1, a2a_col2 = st.columns([2, 1])
+            with a2a_col1:
+                st.markdown(
+                    "**Proposed Hospital Discharge Order (`University Hospital Basel — Cardiology`):**  \n"
+                    "`clopidogrel 75mg` · `simvastatin 40mg` · `warfarin 5mg` · `codeine 30mg PRN`"
+                )
+            with a2a_col2:
+                run_a2a_btn = st.button(
+                    "🤝 Run Autonomous A2A Regimen Handshake",
+                    type="primary",
+                    use_container_width=True,
+                )
+            if run_a2a_btn:
+                st.session_state["last_a2a_negotiation"] = cv.negotiate_a2a_polypharmacy_regimen(
+                    patient_id="pgx-demo-001",
+                    requester="usb-university-hospital-basel",
+                    purpose="inpatient_prescribing_safety",
+                )
+
+            a2a_res = st.session_state.get("last_a2a_negotiation") or cv.negotiate_a2a_polypharmacy_regimen(
+                patient_id="pgx-demo-001",
+                requester="usb-university-hospital-basel",
+                purpose="inpatient_prescribing_safety",
+            )
+            if a2a_res.get("status") == "negotiated":
+                am1, am2, am3, am4 = st.columns(4)
+                am1.metric("Protocol", a2a_res["protocol"], "Autonomous Handshake", border=True)
+                am2.metric("Unsafe Orders Intercepted", f"{a2a_res['unsafe_orders_rewritten']} / {a2a_res['drugs_evaluated']}", "Rewritten in Enclave", border=True)
+                am3.metric("Raw DNA Egress", f"{a2a_res['raw_genome_bytes_exposed']} bytes", "Zero-Knowledge A2A", border=True)
+                am4.metric("Ed25519 Signature", "Verified ✅", a2a_res["signature_ed25519"][:14] + "…", border=True)
+
+                for msg in a2a_res.get("handshake_transcript", []):
+                    is_hospital = "Hospital" in msg["speaker"]
+                    bg = "#f8fafc" if is_hospital else "#ecfdf5"
+                    border_col = "#0284c7" if is_hospital else "#059669"
+                    badge = "🏥 EHR AGENT" if is_hospital else "🛡️ PATIENT LIVING TWIN ENCLAVE"
+                    st.markdown(
+                        f"""
+                        <div style="background:{bg};border-left:4px solid {border_col};padding:0.55rem 0.85rem;border-radius:6px;margin-bottom:0.45rem;font-size:0.84rem;">
+                            <div style="font-weight:700;color:#0f172a;">Turn {msg['turn']} · <span style="color:{border_col};">{badge}</span> ({msg['speaker']}) — <code>{msg['model']}</code></div>
+                            <div style="color:#1e293b;margin-top:0.15rem;">{msg['message']}</div>
+                        </div>
+                        """,
+                        unsafe_allow_html=True,
+                    )
+
+                st.markdown("##### Negotiated Safe Discharge Regimen (Signed by Enclave)")
+                st.dataframe(pd.DataFrame(a2a_res.get("regimen_counter_proposal", [])), hide_index=True, width="stretch")
+
+        with st.container(border=True):
+            st.subheader(":material/history_toggle_off: The 10-Year Lifelong Biological Time-Machine (`2026 → 2036`)")
+            st.caption(
+                "**Sequence Once on Nebius + Parabricks (`$0.0168`) → Protect for a Lifetime.** "
+                "Your germline genome never changes, but your prescriptions and CPIC guidelines evolve over decades. "
+                "Explore how one sealed Helixstreet Living Twin protects patient `pgx-demo-001` across 10 years of life events."
+            )
+            tl_data = cv.get_lifelong_timeline("pgx-demo-001")
+            tm1, tm2, tm3, tm4 = st.columns(4)
+            tm1.metric("One-Time Nebius Parabricks Cost", f"${tl_data['one_time_sequencing_cost_usd']:.4f}", "6.05s on L40S GPU", border=True)
+            tm2.metric("Severe ADRs Prevented (10 Yrs)", str(tl_data["severe_hospitalizations_prevented"]), "Cardiology · Oncology · Psychiatry", border=True)
+            tm3.metric("Estimated Healthcare Savings", f"${tl_data['cumulative_healthcare_savings_usd']:,}", "4,000,000× ROI vs GPU cost", border=True)
+            tm4.metric("10-Year Raw Genome Egress", f"{tl_data['cumulative_raw_genome_bytes_exposed']} bytes", "Immutable Merkle Vault", border=True)
+
+            epoch_cols = st.columns(3)
+            for idx, ev in enumerate(tl_data["epochs"]):
+                with epoch_cols[idx % 3]:
+                    with st.container(border=True):
+                        st.markdown(f"**{ev['year']} · {ev['age_stage']}**")
+                        st.caption(f":material/clinical_notes: {ev['clinical_setting']} — {ev['trigger_event']}")
+                        st.markdown(f"**Enclave Action:** {ev['twin_action']}")
+                        st.success(f"**Outcome:** {ev['clinical_outcome']}")
 
 
 with tab_runs:

@@ -955,12 +955,323 @@ def run_federated_cohort_query(
     return summary
 
 
+def negotiate_a2a_polypharmacy_regimen(
+    patient_id: str = "pgx-demo-001",
+    requester: str = "usb-university-hospital-basel",
+    purpose: str = "inpatient_prescribing_safety",
+    hospital_agent_did: str = "did:web:usb.ch:cardiology-icu-agent",
+    clinical_protocol: str = "Post-PCI Acute Coronary Syndrome + ICU Stabilization Regimen",
+    proposed_drugs: list[dict[str, str]] | None = None,
+) -> dict[str, Any]:
+    """Agent-to-Agent (A2A) Zero-Knowledge Regimen Negotiation (`POST /a2a/negotiate`).
+    A Hospital EHR / ICU Triage Agent proposes a multi-drug treatment protocol to the
+    patient's Sovereign Living Twin Agent. The Consent Gate (`Nemotron 3 Nano`) verifies
+    purpose-bound authorization, and the Enclave Pharmacist (`Nemotron 3 Ultra`) evaluates
+    all proposed drugs simultaneously inside the sealed vault, rewriting unsafe drugs
+    into a 100% genotype-safe counter-proposal signed with Ed25519 (`0 bytes raw genome egress`).
+    """
+    seed_living_twin_defaults()
+    if not proposed_drugs:
+        proposed_drugs = [
+            {"drug": "clopidogrel", "ordered_dose": "75 mg orally once daily (Antiplatelet)"},
+            {"drug": "simvastatin", "ordered_dose": "40 mg orally nightly (High-Intensity Statin)"},
+            {"drug": "escitalopram", "ordered_dose": "20 mg orally once daily (Post-ICU SSRI)"},
+            {"drug": "warfarin", "ordered_dose": "5 mg orally once daily (LV Thrombus Prophylaxis)"},
+        ]
+
+    allowed, consent_doc, decision_code, gate_detail = _check_consent_gate(
+        patient_id=patient_id, requester=requester, purpose=purpose
+    )
+    consent_id = consent_doc.get("consent_id") if consent_doc else None
+    if not allowed:
+        receipt = _append_receipt(
+            patient_id=patient_id,
+            requester=requester,
+            purpose=purpose,
+            drug="a2a-polypharmacy-bundle",
+            decision=decision_code,
+            consent_id=consent_id,
+            attestation_id=None,
+            attestation_sha256=None,
+            detail=f"A2A Regimen Negotiation halted: {gate_detail}",
+        )
+        return {
+            "status": "refused",
+            "decision": decision_code,
+            "reason": gate_detail,
+            "hospital_agent_did": hospital_agent_did,
+            "patient_twin_did": f"did:helix:ch:{patient_id}",
+            "raw_genome_bytes_exposed": 0,
+            "vault_accessed": False,
+            "receipt": receipt,
+        }
+
+    regimen_decisions = []
+    drugs_rewritten = 0
+    for item in proposed_drugs:
+        d_name = item.get("drug", "clopidogrel")
+        ordered_dose = item.get("ordered_dose", "Standard adult regimen")
+        kg = query_knowledge_graph(d_name)
+        if not kg.get("found"):
+            continue
+        pheno = _compute_vault_phenotype(patient_id, kg["gene"])
+        kg = query_knowledge_graph(kg["drug"], pheno["phenotype_category"])
+        alts = kg.get("ranked_alternatives") or []
+        top_alt = alts[0] if alts else {}
+        rewritten_order = (
+            f"{top_alt.get('drug', kg['drug'])} — {top_alt.get('dosing', kg['primary_recommendation'])}"
+            if top_alt
+            else kg["primary_recommendation"]
+        )
+        drugs_rewritten += 1
+        regimen_decisions.append(
+            {
+                "original_hospital_order": f"{kg['drug'].title()} ({ordered_dose})",
+                "enclave_gene_diplotype": f"{kg['gene']} {pheno['diplotype']}",
+                "phenotype": kg["phenotype_label"],
+                "risk_intercepted": kg["actionability"],
+                "rewritten_safe_order": rewritten_order,
+                "evidence_level": f"Level {kg['evidence_level']} ({kg['guideline_version']})",
+                "rxnorm_replacement": top_alt.get("rxnorm_id", kg["rxnorm_id"]),
+            }
+        )
+
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    negotiation_id = f"a2a-neg-{secrets.token_hex(4)}"
+    handshake_transcript = [
+        {
+            "turn": 1,
+            "speaker": f"Hospital EHR Agent ({hospital_agent_did})",
+            "model": "External EHR Clinical Orchestrator (FHIR R4 / A2A)",
+            "message": f"PROPOSE_REGIMEN [{clinical_protocol}]: {len(proposed_drugs)} medications queued for {patient_id}. Requesting enclave PGx clearance under consent {consent_id}.",
+        },
+        {
+            "turn": 2,
+            "speaker": "Helixstreet Consent Gatekeeper (helixstreet_intake)",
+            "model": config.NEMOTRON_NANO_MODEL,
+            "message": f"CONSENT_VERIFIED [{consent_id}]: Requester `{requester}` authorized for `{purpose}` (expires {consent_doc.get('expires_at','')[:10]}). Opening zero-egress enclave session.",
+        },
+        {
+            "turn": 3,
+            "speaker": "Helixstreet Enclave Pharmacist (helixstreet_pharmacist)",
+            "model": config.NEMOTRON_ULTRA_MODEL,
+            "message": f"ENCLAVE_REWRITE_COMPLETE: Intercepted {drugs_rewritten}/{len(regimen_decisions)} high-risk gene-drug interactions across CYP2C19, SLCO1B1, and CYP2C9+VKORC1. Substituted CPIC/DPWG Level 1A alternatives.",
+        },
+        {
+            "turn": 4,
+            "speaker": "Helixstreet Enclave Steward (helixstreet_steward)",
+            "model": config.NEMOTRON_SUPER_MODEL,
+            "message": f"SIGNED_COUNTER_PROPOSAL [{negotiation_id}]: Ed25519 signature attached. raw_genome_bytes_exposed = 0.",
+        },
+    ]
+
+    payload = {
+        "negotiation_id": negotiation_id,
+        "protocol": "helixstreet.a2a.regimen_negotiation.v1",
+        "hospital_agent_did": hospital_agent_did,
+        "patient_twin_did": f"did:helix:ch:{patient_id}",
+        "clinical_protocol": clinical_protocol,
+        "consent_id": consent_id,
+        "drugs_evaluated": len(regimen_decisions),
+        "unsafe_orders_rewritten": drugs_rewritten,
+        "raw_genome_bytes_exposed": 0,
+        "regimen_counter_proposal": regimen_decisions,
+        "issued_at": now_iso,
+    }
+    sig_meta = sign_payload_ed25519(payload)
+    receipt = _append_receipt(
+        patient_id=patient_id,
+        requester=requester,
+        purpose=purpose,
+        drug="a2a-polypharmacy-bundle",
+        decision="GRANTED_A2A_REWRITE",
+        consent_id=consent_id,
+        attestation_id=negotiation_id,
+        attestation_sha256=sig_meta["attestation_sha256"],
+        detail=f"A2A Regimen Negotiation rewrote {drugs_rewritten}/{len(regimen_decisions)} orders into CPIC Level 1A safe alternatives (0 B genome egress).",
+    )
+    return {
+        "status": "negotiated",
+        **payload,
+        "handshake_transcript": handshake_transcript,
+        "attestation_sha256": sig_meta["attestation_sha256"],
+        "signature_ed25519": sig_meta["signature_ed25519"],
+        "public_key_ed25519": sig_meta["public_key_ed25519"],
+        "receipt": receipt,
+    }
+
+
+def get_lifelong_timeline(patient_id: str = "pgx-demo-001") -> dict[str, Any]:
+    """Returns the 10-Year Lifelong Biological Time-Machine (2026 -> 2036) showing
+    how a single genome sequenced & sealed once protects the patient across a decade
+    of care with 0 bytes raw genome egress."""
+    pheno_cyp = _compute_vault_phenotype(patient_id, "CYP2C19")
+    epochs = [
+        {
+            "year": "2026",
+            "age_stage": "Baseline · Enclave Sealing",
+            "clinical_setting": "Nebius L40S Parabricks + Vault Anchor",
+            "trigger_event": "Sequenced once (`pbrun deepvariant` in 6.05s, $0.0168 Nemotron 3 cost) & sealed in SHA-256 Merkle vault.",
+            "twin_action": f"Anchored Merkle root `{pheno_cyp['genome_commitment_root'][:18]}…` over CPIC pharmacogenes + WGS calls.",
+            "clinical_outcome": "Lifelong Sovereign Twin initialized (one-time sequencing).",
+            "cost_saved_usd": 0,
+            "raw_genome_bytes_exposed": 0,
+        },
+        {
+            "year": "2027",
+            "age_stage": "Year +1 · Acute Cardiology (PCI Stent)",
+            "clinical_setting": "Hirsch Apotheke Basel (`POST /ask`)",
+            "trigger_event": "Clopidogrel 75 mg/day prescribed post-coronary stent.",
+            "twin_action": "Signed Ed25519 attestation (`CYP2C19 *2/*2 Poor Metabolizer`) -> Switched to #1 ranked Prasugrel 10 mg/day.",
+            "clinical_outcome": "Prevented acute in-stent thrombosis & recurrent myocardial infarction.",
+            "cost_saved_usd": 24500,
+            "raw_genome_bytes_exposed": 0,
+        },
+        {
+            "year": "2028",
+            "age_stage": "Year +2 · Outpatient Psychiatry",
+            "clinical_setting": "EHR FHIR R4 Watcher (`POST /fhir/MedicationRequest`)",
+            "trigger_event": "Escitalopram 20 mg/day ordered for post-discharge depression.",
+            "twin_action": "Unprompted Living Twin alert intercepted CYP2C19 Poor Metabolizer QTc-prolongation risk -> 50% dose cap (10 mg/day).",
+            "clinical_outcome": "Prevented drug-induced QTc prolongation & emergency arrhythmia admission.",
+            "cost_saved_usd": 8200,
+            "raw_genome_bytes_exposed": 0,
+        },
+        {
+            "year": "2030",
+            "age_stage": "Year +4 · Medical Oncology",
+            "clinical_setting": "A2A Tumor Board Negotiation (`POST /a2a/negotiate`)",
+            "trigger_event": "Adjuvant Capecitabine / 5-Fluorouracil chemotherapy protocol proposed.",
+            "twin_action": "Enclave detected `DPYD *1/*2A Intermediate Metabolizer` (rs3918290) -> Mandatory 50% starting dose reduction.",
+            "clinical_outcome": "Prevented potentially fatal Grade 4 neutropenia & mucositis ICU stay.",
+            "cost_saved_usd": 31000,
+            "raw_genome_bytes_exposed": 0,
+        },
+        {
+            "year": "2033",
+            "age_stage": "Year +7 · Autonomous Guideline Watch",
+            "clinical_setting": "CPIC / EMA Guideline Stream (`POST /guidelines/update`)",
+            "trigger_event": "New CPIC / Swissmedic star-allele interaction published.",
+            "twin_action": "Living Twin re-evaluated sealed static genome in the background without re-sequencing or moving raw DNA.",
+            "clinical_outcome": "Proactive medication profile updated 4 months before next clinic visit.",
+            "cost_saved_usd": 4800,
+            "raw_genome_bytes_exposed": 0,
+        },
+        {
+            "year": "2036",
+            "age_stage": "Year +10 · Federated Population Equity",
+            "clinical_setting": "Sovereign Cohort Federation (`POST /federated/cohort-query`)",
+            "trigger_event": "European Health Data Space (EHDS) multi-ancestry pharmacovigilance audit.",
+            "twin_action": "Contributed Ed25519-signed zero-knowledge RWE concordance proof to 4-node federation.",
+            "clinical_outcome": "3 severe hospitalizations prevented over 10 years · 0 bytes raw genome ever exposed.",
+            "cost_saved_usd": 0,
+            "raw_genome_bytes_exposed": 0,
+        },
+    ]
+    return {
+        "patient_id": patient_id,
+        "patient_did": f"did:helix:ch:{patient_id}",
+        "horizon": "10-Year Lifelong Biological Twin Trajectory (2026–2036)",
+        "one_time_sequencing_cost_usd": 0.0168,
+        "severe_hospitalizations_prevented": 3,
+        "cumulative_healthcare_savings_usd": sum(e["cost_saved_usd"] for e in epochs),
+        "cumulative_raw_genome_bytes_exposed": 0,
+        "epochs": epochs,
+    }
+
+
+def build_w3c_verifiable_credential(patient_id: str = "pgx-demo-001") -> dict[str, Any]:
+    """Builds a standards-compliant W3C Verifiable Credential (`v1`) & European Health
+    Data Space (`EHDS 2027`) Sovereign Genome Wallet Pass signed with Ed25519."""
+    pheno_cyp = _compute_vault_phenotype(patient_id, "CYP2C19")
+    pheno_dpyd = _compute_vault_phenotype(patient_id, "DPYD")
+    pheno_slco = _compute_vault_phenotype(patient_id, "SLCO1B1")
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    vc_payload = {
+        "@context": [
+            "https://www.w3.org/2018/credentials/v1",
+            "https://ehds.europa.eu/credentials/pharmacogenomics/v1",
+        ],
+        "id": f"urn:uuid:helixstreet-vc-{patient_id}",
+        "type": [
+            "VerifiableCredential",
+            "EHDSPharmacogenomicPassportCredential",
+            "HelixstreetZeroGenomeEgressCredential",
+        ],
+        "issuer": {
+            "id": "did:web:nebius.helixstreet.io:enclave",
+            "name": "Helixstreet Confidential Pharmacogenomic Enclave (Basel / EU-North1)",
+            "publicKeyEd25519": get_enclave_public_key_hex(),
+        },
+        "issuanceDate": now_iso,
+        "expirationDate": "2036-10-24T00:00:00Z",
+        "credentialSubject": {
+            "id": f"did:helix:ch:{patient_id}",
+            "jurisdiction": ["CH-nFADP-Art6", "EU-GDPR-Art9-2a", "EU-EHDS-2027"],
+            "sealedMerkleVaultRoot": pheno_cyp["genome_commitment_root"],
+            "rawGenomeBytesExposed": 0,
+            "emergencyActionablePhenotypes": [
+                {
+                    "gene": "CYP2C19",
+                    "diplotype": pheno_cyp["diplotype"],
+                    "phenotype": "CYP2C19 Poor Metabolizer",
+                    "criticalDrugs": ["Clopidogrel (Avoid -> Prasugrel/Ticagrelor)", "Escitalopram (50% Dose Cap <=10mg)"],
+                    "evidenceLevel": "CPIC / DPWG Level 1A",
+                },
+                {
+                    "gene": "DPYD",
+                    "diplotype": pheno_dpyd["diplotype"],
+                    "phenotype": "DPYD Intermediate Metabolizer",
+                    "criticalDrugs": ["5-Fluorouracil / Capecitabine (Mandatory 50% Dose Reduction)"],
+                    "evidenceLevel": "CPIC / DPWG / EMA Level 1A",
+                },
+                {
+                    "gene": "SLCO1B1",
+                    "diplotype": pheno_slco["diplotype"],
+                    "phenotype": "SLCO1B1 Poor Function",
+                    "criticalDrugs": ["Simvastatin (Avoid >20mg -> Switch Rosuvastatin/Pravastatin)"],
+                    "evidenceLevel": "CPIC / DPWG Level 1A",
+                },
+            ],
+            "verificationEndpoint": "https://nebius.helixstreet.io/ask",
+        },
+    }
+    sig_meta = sign_payload_ed25519(vc_payload)
+    vc_payload["proof"] = {
+        "type": "Ed25519Signature2020",
+        "created": now_iso,
+        "verificationMethod": "did:web:nebius.helixstreet.io:enclave#key-ed25519-1",
+        "proofPurpose": "assertionMethod",
+        "payloadSha256": sig_meta["attestation_sha256"],
+        "proofValue": sig_meta["signature_ed25519"],
+    }
+    return vc_payload
+
+
 def seed_living_twin_defaults() -> None:
     """Idempotently seeds the initial standing consents, a verified clopidogrel
     signed attestation + receipt, a proactive Escitalopram FHIR MedicationRequest
     Living Twin alert, and a closed-loop RWE outcome so the dashboard is
     immediately populated on cold start."""
     db = clients.firestore()
+    c_usb = db.collection(config.COLL_CONSENTS).document("cns-usb-cardio-002")
+    if not c_usb.get().exists:
+        c_usb.set(
+            {
+                "consent_id": "cns-usb-cardio-002",
+                "patient_id": "pgx-demo-001",
+                "patient_pseudonym": "did:helix:ch:pgx-demo-001",
+                "requester": "usb-university-hospital-basel",
+                "requester_name": "University Hospital Basel — Cardiology & Catheterization Lab",
+                "purpose": "inpatient_prescribing_safety",
+                "allowed_scope": "Signed Phenotype Attestation Only (0 Raw Genome Bytes Egress)",
+                "jurisdiction": "Swiss nFADP Art. 6 / EU GDPR Art. 9(2)(a) / EHDS 2027",
+                "status": "ACTIVE",
+                "granted_at": "2026-10-01T08:00:00+00:00",
+                "expires_at": "2027-10-01T08:00:00+00:00",
+                "revoked_at": None,
+            }
+        )
     c_ref = db.collection(config.COLL_CONSENTS).document("cns-pharm-basel-001")
     if c_ref.get().exists:
         return

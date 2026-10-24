@@ -194,3 +194,35 @@ def test_fastapi_consent_and_living_twin_endpoints():
     fed_data = r_fed.json()
     assert fed_data["total_raw_genome_bytes_pooled"] == 0
     assert len(fed_data["nodes"]) == 4
+
+    # Proposal 6: A2A zero-knowledge polypharmacy regimen negotiation
+    r_a2a = client.post(
+        "/a2a/negotiate",
+        json={
+            "patient_id": "pgx-demo-001",
+            "requester": "usb-university-hospital-basel",
+            "purpose": "inpatient_prescribing_safety",
+        },
+    )
+    assert r_a2a.status_code == 200
+    a2a_data = r_a2a.json()
+    assert a2a_data["status"] == "negotiated"
+    assert a2a_data["raw_genome_bytes_exposed"] == 0
+    assert a2a_data["unsafe_orders_rewritten"] == 4
+    assert len(a2a_data["handshake_transcript"]) == 4
+
+    # Proposal 7: 10-year lifelong biological time-machine
+    r_tl = client.get("/twin/timeline/pgx-demo-001")
+    assert r_tl.status_code == 200
+    tl_data = r_tl.json()
+    assert tl_data["cumulative_raw_genome_bytes_exposed"] == 0
+    assert tl_data["cumulative_healthcare_savings_usd"] == 68500
+    assert len(tl_data["epochs"]) == 6
+
+    # Proposal 8: W3C Verifiable Credential & EHDS 2027 Sovereign Genome Wallet Pass
+    r_vc = client.get("/wallet/vc/pgx-demo-001")
+    assert r_vc.status_code == 200
+    vc_data = r_vc.json()
+    assert "VerifiableCredential" in vc_data["type"]
+    assert vc_data["credentialSubject"]["rawGenomeBytesExposed"] == 0
+    assert "proofValue" in vc_data["proof"]
