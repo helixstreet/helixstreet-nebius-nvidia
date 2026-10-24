@@ -114,7 +114,7 @@ async def run_pipeline(pipeline_agent, user_id: str, prompt: str) -> str:
                 "agent": author,
                 "type": "tool_result",
                 "tool": resp.name,
-                "result": json.dumps(resp.response, default=str)[:800],
+                "result": json.dumps(resp.response, default=str)[:2400],
                 "model": model_ver,
                 "latency_ms": latency_ms,
             }

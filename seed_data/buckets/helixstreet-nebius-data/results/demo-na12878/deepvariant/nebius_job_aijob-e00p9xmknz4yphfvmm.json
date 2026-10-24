@@ -1,0 +1,44 @@
+{
+  "metadata": {
+    "id": "aijob-e00p9xmknz4yphfvmm",
+    "parent_id": "project-e00btn6gpr00s6vm81sqw7",
+    "name": "parabricks-dv-demo-na12878",
+    "resource_version": "1",
+    "created_at": "2026-10-24T13:24:44.501232Z",
+    "updated_at": "2026-10-24T13:24:44.501232Z"
+  },
+  "spec": {
+    "image": "nvcr.io/nvidia/clara/clara-parabricks:4.3.0-1",
+    "container_command": "/bin/bash",
+    "args": "/mnt/nebius/scripts/run_parabricks_na12878.sh",
+    "volumes": [
+      {
+        "source": "s3://helixstreet-nebius-data",
+        "container_path": "/mnt/nebius",
+        "mode": "READ_WRITE",
+        "s3_config": {
+          "endpoint": "https://storage.eu-north1.nebius.cloud",
+          "region": "eu-north1",
+          "mysterybox_secret": {
+            "secret_id": "mbsec-e00zxbcp465mhbrhwf",
+            "version_id": "mbsecver-e00dpneg3hyq4p1cyd"
+          }
+        }
+      }
+    ],
+    "platform": "gpu-l40s-a",
+    "preset": "1gpu-16vcpu-64gb",
+    "shm_size_bytes": "17179869184",
+    "disk": {
+      "type": "NETWORK_SSD",
+      "size_bytes": "268435456000"
+    },
+    "subnet_id": "vpcsubnet-e00nadwzfhx334rft8",
+    "timeout": "3600s"
+  },
+  "status": {
+    "state": "COMPLETED",
+    "started_at": "2026-10-24T13:26:49.383035407Z",
+    "finished_at": "2026-10-24T13:26:57.681132220Z"
+  }
+}

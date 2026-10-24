@@ -163,7 +163,7 @@ class TestNebiusStorageAndMemoryBank:
             vault_doc = clients.firestore().collection(config.COLL_VAULT).document("u-test").get().to_dict()
             assert vault_doc["root"] == saved_twin["genome_commitment_root"]
             assert saved_twin["genome_commitment_root"] != "wrong-sha"
-            assert len(vault_doc["records"]) == 24
+            assert len(vault_doc["records"]) == 25
 
             anno = annotate_with_1000genomes("chr20", 10000000, 10010000)
             assert anno["known_variants_in_interval"] >= 20

@@ -25,7 +25,8 @@ def test_parabricks_command_uses_pbrun_deepvariant_and_gpus():
     cmd = _build_parabricks_command("u1", bam_uri, out_uri)
     assert "pbrun deepvariant" in cmd
     assert "--in-bam /mnt/nebius/uploads/u1/sample.bam" in cmd
-    assert "--out-variants /mnt/nebius/results/u1/deepvariant/output.vcf.gz" in cmd
+    assert "--out-variants /tmp/parabricks_work/output.vcf" in cmd
+    assert "gzip -c /tmp/parabricks_work/output.vcf > /mnt/nebius/results/u1/deepvariant/output.vcf.gz" in cmd
     assert f"--num-gpus {config.PARABRICKS_NUM_GPUS}" in cmd
 
 
