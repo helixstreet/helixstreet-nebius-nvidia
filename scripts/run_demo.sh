@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 # CLI demo trigger (Nebius x NVIDIA edition): stages a synthetic manifest +
 # NA12878 quickstart BAM slice into Nebius Object Storage and triggers the
-# fleet's /eventarc webhook.
+# fleet's /storage-event webhook.
 set -euo pipefail
 
 USER_ID="${1:-demo-na12878-$(date +%s)}"
@@ -40,7 +40,7 @@ bam_blob.upload_from_string(
 )
 print(f"==> Staged manifest + BAM in s3://{config.DATA_BUCKET}/uploads/{user_id}/")
 resp = requests.post(
-    f"{fleet_url}/eventarc",
+    f"{fleet_url}/storage-event",
     json={"bucket": config.DATA_BUCKET, "name": f"uploads/{user_id}/sample.bam", "generation": str(int(time.time() * 1000))},
     timeout=300,
 )

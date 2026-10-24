@@ -96,7 +96,7 @@ def scrub_pii(text: str) -> dict:
     return {"engine": "hipaa_safe_harbor_scrubber", "redacted_text": redacted}
 
 
-def screen_with_model_armor(text: str) -> dict:
+def screen_manifest_safety(text: str) -> dict:
     """Screens incoming text for prompt injection and data-loss risks.
 
     Args:
@@ -121,12 +121,15 @@ def screen_with_model_armor(text: str) -> dict:
     }
 
 
+screen_with_model_armor = screen_manifest_safety
+
+
 def deidentify_manifest(manifest_uri: str) -> dict:
     """Reads, screens, and de-identifies a patient manifest directly in storage
     so raw PII never enters any LLM prompt or context window.
 
     Args:
-        manifest_uri: Full gs:// or s3:// URI of the patient manifest.json.
+        manifest_uri: Full s3:// or gs:// URI of the patient manifest.json.
 
     Returns:
         Status dict with verdict, scrubbed_uri, engine, and the already-redacted
@@ -140,7 +143,7 @@ def deidentify_manifest(manifest_uri: str) -> dict:
             "detail": raw,
         }
 
-    screen = screen_with_model_armor(raw)
+    screen = screen_manifest_safety(raw)
     if screen["verdict"] == "blocked":
         return {
             "status": "blocked",

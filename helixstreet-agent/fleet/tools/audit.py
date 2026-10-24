@@ -31,37 +31,9 @@ def record_audit_event(agent_name: str, action: str, details: str) -> dict:
     Returns:
         The ledger sequence number and entry hash proving the write.
     """
-    db = clients.firestore()
+    db = clients.state_store()
     coll = db.collection(config.COLL_AUDIT)
     head_ref = coll.document(_HEAD_DOC)
-
-    if config.STATE_BACKEND == "gcp":
-        from google.cloud import firestore as _fs
-
-        transaction = db.transaction()
-
-        @_fs.transactional
-        def _append_gcp(tx):
-            head = head_ref.get(transaction=tx)
-            if head.exists:
-                seq = head.get("seq") + 1
-                prev_hash = head.get("hash")
-            else:
-                seq, prev_hash = 0, "GENESIS"
-            payload = {
-                "seq": seq,
-                "agent": agent_name,
-                "action": action,
-                "details": details,
-                "timestamp": datetime.datetime.now(datetime.timezone.utc).isoformat(),
-            }
-            h = _entry_hash(prev_hash, payload)
-            tx.set(coll.document(f"{seq:08d}"), {**payload, "prev_hash": prev_hash, "hash": h})
-            tx.set(head_ref, {"seq": seq, "hash": h})
-            return seq, h
-
-        seq, h = _append_gcp(transaction)
-        return {"status": "recorded", "seq": seq, "hash": h}
 
     with _AUDIT_LOCK:
         head = head_ref.get()

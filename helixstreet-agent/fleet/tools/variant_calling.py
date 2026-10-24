@@ -217,7 +217,7 @@ def submit_parabricks_job(user_id: str, bam_gcs_uri: str) -> dict:
     safe_uid = re.sub(r"[^a-z0-9-]", "-", user_id.lower())[:20].strip("-")
     job_id = f"parabricks-dv-{safe_uid}-{int(time.time())}"
     output_rel = f"results/{user_id}/deepvariant/output.vcf.gz"
-    output_vcf_gcs = f"gs://{config.DATA_BUCKET}/{output_rel}"
+    output_vcf_gcs = f"s3://{config.DATA_BUCKET}/{output_rel}"
     volume_spec = f"s3://{config.DATA_BUCKET}:{MOUNT}"
 
     # Ensure prefix exists in storage

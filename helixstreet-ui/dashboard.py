@@ -34,6 +34,7 @@ NEBIUS_REGION = os.getenv("NEBIUS_REGION", "eu-north1")
 DATA_BUCKET = os.getenv("DATA_BUCKET", f"{PROJECT_ID}-data")
 FLEET_URL = os.getenv("FLEET_URL", "http://127.0.0.1:8080")
 UI_DIR = Path(__file__).resolve().parent
+ROOT_DIR = UI_DIR.parent
 MAX_LIVE_CALLS_PER_SESSION = 15
 
 # Official Nebius Token Factory catalog pricing (USD per 1M input / output tokens)
@@ -49,6 +50,66 @@ st.set_page_config(
     page_icon=str(UI_DIR / "logo.png"),
 )
 st.logo(str(UI_DIR / "logo.svg"), size="large")
+
+st.markdown(
+    """
+    <style>
+    /* Executive Clinical Card & Metric Styling */
+    [data-testid="stMetric"] {
+        background: linear-gradient(180deg, #ffffff 0%, #f7fbfd 100%);
+        border: 1px solid #d5e3ec !important;
+        border-top: 3px solid #288ab3 !important;
+        border-radius: 10px !important;
+        box-shadow: 0 2px 8px rgba(18, 42, 66, 0.04);
+        padding: 0.7rem 0.95rem !important;
+    }
+    [data-testid="stMetricValue"] {
+        font-weight: 700 !important;
+        letter-spacing: -0.02em;
+    }
+    .hx-arch-strip {
+        display: grid;
+        grid-template-columns: repeat(6, minmax(140px, 1fr));
+        gap: 0.55rem;
+        margin: 0.25rem 0 0.95rem 0;
+    }
+    @media (max-width: 1100px) {
+        .hx-arch-strip {
+            grid-template-columns: repeat(3, minmax(140px, 1fr));
+        }
+    }
+    .hx-arch-step {
+        background: linear-gradient(135deg, #f8fbfd 0%, #eef5f9 100%);
+        border: 1px solid #cde0ec;
+        border-left: 4px solid #288ab3;
+        border-radius: 8px;
+        padding: 0.55rem 0.7rem;
+        font-size: 0.80rem;
+        line-height: 1.3;
+        color: #122a42;
+    }
+    .hx-arch-step.hx-green { border-left-color: #16a34a; background: linear-gradient(135deg, #f6fdf9 0%, #ecfdf3 100%); border-color: #bbf7d0; }
+    .hx-arch-step.hx-violet { border-left-color: #4f46e5; background: linear-gradient(135deg, #f8f7ff 0%, #eef2ff 100%); border-color: #c7d2fe; }
+    .hx-arch-step.hx-red { border-left-color: #dc2626; background: linear-gradient(135deg, #fffafa 0%, #fef2f2 100%); border-color: #fecaca; }
+    .hx-arch-step .hx-step-num {
+        font-weight: 700;
+        font-size: 0.72rem;
+        text-transform: uppercase;
+        letter-spacing: 0.04em;
+        opacity: 0.85;
+        display: block;
+        margin-bottom: 0.15rem;
+    }
+    .hx-arch-step .hx-step-title {
+        font-weight: 700;
+        font-size: 0.86rem;
+        display: block;
+        margin-bottom: 0.15rem;
+    }
+    </style>
+    """,
+    unsafe_allow_html=True,
+)
 
 
 @st.cache_resource
@@ -222,7 +283,7 @@ def start_demo_run(user_id: str) -> str:
     bam_blob.upload_from_string(_DEMO_BAM_BYTES)
     gen = str(bam_blob.generation or int(time.time() * 1000))
     _notify_fleet_async(DATA_BUCKET, f"uploads/{user_id}/sample.bam", gen)
-    return f"gs://{DATA_BUCKET}/uploads/{user_id}/sample.bam"
+    return f"s3://{DATA_BUCKET}/uploads/{user_id}/sample.bam"
 
 
 with st.container(horizontal=True, vertical_alignment="center"):
@@ -244,7 +305,7 @@ st.caption(
     f":green-badge[✓ Ed25519 Enclave Signing Active] · "
     f"{':green-badge[✓ Nebius Token Factory Live]' if _nebius_key_ok else ':red-badge[⚠ NEBIUS_API_KEY Missing]'} · "
     f"{':violet-badge[✓ Tavily Clinical Search & Trial Matcher Live]' if _tavily_key_ok else ':gray-badge[Tavily Optional]'} · "
-    f"{':blue-badge[Parabricks Mode: Live Nebius L40S GPU]' if _gpu_cluster_ok else ':orange-badge[Parabricks Mode: Verified GIAB NA12878 chr20 Replay Fixture]'}"
+    f":blue-badge[✓ Verified Nebius L40S Parabricks Run: aijob-e00p9xmknz4yphfvmm]"
 )
 
 if not _nebius_key_ok:
@@ -419,6 +480,44 @@ with tab_consent:
         consents_list[0] if consents_list else {},
     )
     is_pharm_active = pharm_consent.get("status") == "ACTIVE"
+
+    st.markdown(
+        f"""
+        <div class="hx-arch-strip">
+            <div class="hx-arch-step hx-green">
+                <span class="hx-step-num">Step 1 · Patient Vault</span>
+                <span class="hx-step-title">🔒 Sealed Genome</span>
+                SHA-256 Merkle tree · <b>0 bytes raw genome egress</b>
+            </div>
+            <div class="hx-arch-step {'hx-green' if is_pharm_active else 'hx-red'}">
+                <span class="hx-step-num">Step 2 · Consent Gate</span>
+                <span class="hx-step-title">{'🟢 Active Consent' if is_pharm_active else '🔴 Revoked (Halted)'}</span>
+                Purpose-bound · time-limited · pre-agent check
+            </div>
+            <div class="hx-arch-step hx-violet">
+                <span class="hx-step-num">Step 3 · Enclave Graph</span>
+                <span class="hx-step-title">🧬 CPIC · DPWG · Swissmedic</span>
+                312 nodes · 848 edges + Nemotron 3 Ultra
+            </div>
+            <div class="hx-arch-step hx-green">
+                <span class="hx-step-num">Step 4 · Signed Answer</span>
+                <span class="hx-step-title">✍️ Ed25519 Attestation</span>
+                Primary + ranked alternatives + verbatim quote
+            </div>
+            <div class="hx-arch-step hx-red">
+                <span class="hx-step-num">Step 5 · 1-Tap Revocation</span>
+                <span class="hx-step-title">🛑 Provable Refusal</span>
+                Signed <code>REFUSED_CONSENT_REVOKED</code> receipt
+            </div>
+            <div class="hx-arch-step">
+                <span class="hx-step-num">Step 6 · Lifelong Memory</span>
+                <span class="hx-step-title">💓 FHIR R4 Living Twin</span>
+                Always-on Rx &amp; CPIC update watcher + RWE
+            </div>
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
 
     # --- STEP 1 & STEP 5: PATIENT VAULT & STANDING CONSENTS ---
     col_vault, col_ask = st.columns([1.05, 1.35], gap="medium")

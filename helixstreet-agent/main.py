@@ -246,8 +246,8 @@ def _already_processed(bucket: str, name: str, generation: str) -> bool:
 
 
 @app.post("/storage-event")
-@app.post("/eventarc")
-async def handle_eventarc(request: Request):
+@app.post("/eventarc", include_in_schema=False)
+async def handle_storage_event(request: Request):
     body = await request.json()
     try:
         bucket, name, generation = _parse_gcs_event(body)
@@ -255,21 +255,21 @@ async def handle_eventarc(request: Request):
         log.warning("Ignoring malformed event: %s", e)
         return {"status": "ignored", "reason": str(e)}
 
-    log.info("Storage Event: gs://%s/%s (gen %s)", bucket, name, generation)
+    log.info("Storage Event: s3://%s/%s (gen %s)", bucket, name, generation)
 
     if m := _BAM_RE.match(name):
         pipeline, uid = ingest_pipeline, m["uid"]
         prompt = (
             f"NEW_READS event. user_id: {uid}. "
-            f"Aligned reads uploaded: gs://{bucket}/{name}. "
-            f"Patient manifest (if present): gs://{bucket}/uploads/{uid}/manifest.json. "
+            f"Aligned reads uploaded: s3://{bucket}/{name}. "
+            f"Patient manifest (if present): s3://{bucket}/uploads/{uid}/manifest.json. "
             "Run the intake compliance workflow, then dispatch variant calling."
         )
     elif m := _RESULT_RE.match(name) or _VCF_UPLOAD_RE.match(name):
         pipeline, uid = analysis_pipeline, m["uid"]
         prompt = (
             f"VCF_READY event. user_id: {uid}. "
-            f"Variant calls available at: gs://{bucket}/{name}. "
+            f"Variant calls available at: s3://{bucket}/{name}. "
             "Analyze the variants, add 1000 Genomes population context, and "
             "persist the digital twin."
         )
@@ -277,7 +277,7 @@ async def handle_eventarc(request: Request):
         return {"status": "ignored", "reason": "object outside fleet routing rules"}
 
     if _already_processed(bucket, name, generation):
-        log.info("Duplicate delivery for gs://%s/%s, skipping.", bucket, name)
+        log.info("Duplicate delivery for s3://%s/%s, skipping.", bucket, name)
         return {"status": "duplicate", "object": name}
 
     try:

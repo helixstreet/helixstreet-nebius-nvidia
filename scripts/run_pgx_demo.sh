@@ -36,7 +36,7 @@ with open(vcf_path, "r") as f:
 
 print(f"==> Staged PGx panel in s3://{config.DATA_BUCKET}/uploads/{user_id}/pgx-panel.vcf")
 resp = requests.post(
-    f"{fleet_url}/eventarc",
+    f"{fleet_url}/storage-event",
     json={"bucket": config.DATA_BUCKET, "name": f"uploads/{user_id}/pgx-panel.vcf", "generation": str(int(time.time() * 1000))},
     timeout=300,
 )

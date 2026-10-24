@@ -23,7 +23,7 @@ from google.adk.agents import Agent, SequentialAgent
 from . import config
 from .nebius_llm import NebiusTokenFactoryLlm
 from .tools.audit import record_audit_event
-from .tools.compliance import deidentify_manifest, screen_with_model_armor, scrub_pii
+from .tools.compliance import deidentify_manifest, screen_manifest_safety, scrub_pii
 from .tools.gcs import fingerprint_gcs_object, read_gcs_text, write_gcs_text
 from .tools.genomics import annotate_with_1000genomes, parse_vcf
 from .tools.memory import get_pipeline_state, save_digital_twin, update_pipeline_state
@@ -78,7 +78,7 @@ repeating the user_id and the BAM URI exactly as given to you.""",
     tools=[
         deidentify_manifest,
         read_gcs_text,
-        screen_with_model_armor,
+        screen_manifest_safety,
         scrub_pii,
         write_gcs_text,
         fingerprint_gcs_object,

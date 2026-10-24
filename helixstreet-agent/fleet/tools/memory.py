@@ -36,7 +36,7 @@ def _ensure_genome_committed(user_id: str) -> dict | None:
     for rel_path in candidate_blobs:
         blob = bucket.blob(rel_path)
         if blob.exists():
-            vcf_uri = f"gs://{config.DATA_BUCKET}/{rel_path}"
+            vcf_uri = f"s3://{config.DATA_BUCKET}/{rel_path}"
             try:
                 commit_genome(user_id, vcf_uri)
                 snap2 = vault_ref.get()

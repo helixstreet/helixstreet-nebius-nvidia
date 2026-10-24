@@ -48,8 +48,8 @@
   <!-- Header Banner -->
   <rect x="28" y="20" width="1804" height="68" rx="12" fill="#131c33" stroke="#334155" stroke-width="1.5"/>
   <rect x="44" y="34" width="10" height="40" rx="4" fill="#76B900"/>
-  <text x="68" y="51" fill="#f8fafc" font-size="21" font-weight="700">Helixstreet — Nemotron Genome Lab Architecture (Nebius x NVIDIA Edition)</text>
-  <text x="68" y="73" fill="#94a3b8" font-size="13.5" font-weight="500">3-Tier NVIDIA Nemotron 3 (Ultra 550B · Super 120B · Nano 30B) on Nebius Token Factory  +  NVIDIA Clara Parabricks (pbrun deepvariant) on Nebius Serverless GPU Jobs</text>
+  <text x="68" y="51" fill="#f8fafc" font-size="21" font-weight="700">Helixstreet — The Consent-Native Pharmacogenomics Layer (Nebius x NVIDIA Edition)</text>
+  <text x="68" y="73" fill="#94a3b8" font-size="13" font-weight="500">Ed25519 Enclave Attestations (0B Raw Egress) · 3-Tier NVIDIA Nemotron 3 on Nebius Token Factory · Clara Parabricks on Nebius L40S GPU (aijob-e00p9xmknz4yphfvmm)</text>
 
   <!-- Legend Pills in Header -->
   <rect x="1250" y="36" width="180" height="34" rx="17" fill="#143325" stroke="#76B900" stroke-width="1.5"/>
@@ -69,31 +69,35 @@
   <text x="148" y="158" fill="#64748b" font-size="12" text-anchor="middle">nebius.helixstreet.io</text>
 
   <!-- Streamlit Box -->
-  <rect x="46" y="250" width="204" height="190" rx="10" fill="#1e293b" stroke="#38bdf8" stroke-width="1.8"/>
-  <text x="148" y="280" fill="#f8fafc" font-size="15" font-weight="700" text-anchor="middle">Streamlit Dashboard</text>
-  <text x="148" y="300" fill="#38bdf8" font-size="12" font-weight="600" text-anchor="middle">6 Interactive Live Views</text>
-  <line x1="62" y1="312" x2="234" y2="312" stroke="#334155" stroke-width="1"/>
-  <text x="62" y="334" fill="#cbd5e1" font-size="12">• Pipeline runs &amp; traces</text>
-  <text x="62" y="354" fill="#cbd5e1" font-size="12">• Genomic Digital Twins</text>
-  <text x="62" y="374" fill="#cbd5e1" font-size="12">• 1-of-N Merkle Proofs</text>
-  <text x="62" y="394" fill="#cbd5e1" font-size="12">• Zero-leakage IBS0 Kinship</text>
-  <text x="62" y="414" fill="#cbd5e1" font-size="12">• Fleet Registry &amp; Audit Chain</text>
+  <rect x="46" y="210" width="204" height="225" rx="10" fill="#1e293b" stroke="#38bdf8" stroke-width="1.8"/>
+  <text x="148" y="238" fill="#f8fafc" font-size="14.5" font-weight="700" text-anchor="middle">Command Center UI</text>
+  <text x="148" y="257" fill="#38bdf8" font-size="11.5" font-weight="600" text-anchor="middle">7 Interactive Live Views</text>
+  <line x1="60" y1="268" x2="236" y2="268" stroke="#334155" stroke-width="1"/>
+  <text x="58" y="288" fill="#a3e635" font-size="11.5" font-weight="700">• Living Twin &amp; Consent Gate</text>
+  <text x="58" y="308" fill="#cbd5e1" font-size="11.5">• Ed25519 Signed Attestations</text>
+  <text x="58" y="328" fill="#cbd5e1" font-size="11.5">• Genomic Digital Twins &amp; 3D PDB</text>
+  <text x="58" y="348" fill="#cbd5e1" font-size="11.5">• Pipeline Runs &amp; Cost Timeline</text>
+  <text x="58" y="368" fill="#cbd5e1" font-size="11.5">• 1-of-25 Merkle &amp; IBS0 Proofs</text>
+  <text x="58" y="388" fill="#cbd5e1" font-size="11.5">• Fleet Registry &amp; 3-Tier Bench</text>
+  <text x="58" y="408" fill="#cbd5e1" font-size="11.5">• Hash-Chained Audit Ledger</text>
 
-  <!-- Demo Triggers Box -->
-  <rect x="46" y="480" width="204" height="145" rx="10" fill="#172033" stroke="#475569" stroke-width="1.2"/>
-  <text x="148" y="506" fill="#e2e8f0" font-size="13" font-weight="700" text-anchor="middle">1-Click Sample Staging</text>
-  <text x="60" y="530" fill="#94a3b8" font-size="11.5">1. GIAB NA12878 chr20 BAM</text>
-  <text x="60" y="548" fill="#94a3b8" font-size="11.5">   + synthetic PII manifest</text>
-  <text x="60" y="574" fill="#94a3b8" font-size="11.5">2. CPIC Level-A PGx VCF</text>
-  <text x="60" y="592" fill="#94a3b8" font-size="11.5">   (6 actionable star alleles)</text>
-  <text x="60" y="614" fill="#76B900" font-size="11" font-weight="600">→ Never calls agents directly</text>
+  <!-- Enclave & Living Twin API Box -->
+  <rect x="46" y="455" width="204" height="190" rx="10" fill="#172033" stroke="#76B900" stroke-width="1.4"/>
+  <text x="148" y="480" fill="#a3e635" font-size="12.5" font-weight="700" text-anchor="middle">Consent-Native Enclave API</text>
+  <text x="56" y="503" fill="#e2e8f0" font-size="11" font-family="monospace">POST /ask (Ed25519 signed)</text>
+  <text x="56" y="523" fill="#fca5a5" font-size="11" font-family="monospace">POST /consents/revoke</text>
+  <text x="56" y="543" fill="#7dd3fc" font-size="11" font-family="monospace">POST /fhir/MedicationRequest</text>
+  <text x="56" y="563" fill="#7dd3fc" font-size="11" font-family="monospace">POST /guidelines/update</text>
+  <text x="56" y="583" fill="#d8b4fe" font-size="11" font-family="monospace">POST /rwe/outcome</text>
+  <text x="56" y="603" fill="#d8b4fe" font-size="11" font-family="monospace">POST /federated/cohort-query</text>
+  <text x="56" y="628" fill="#76B900" font-size="11" font-weight="700">→ 0 Bytes Raw Genome Egress</text>
 
   <!-- ========================================================================= -->
   <!-- COLUMN 2: NEBIUS OBJECT STORAGE & EVENT WEBHOOK -->
   <!-- ========================================================================= -->
   <rect x="292" y="108" width="245" height="630" rx="14" fill="url(#nebiusBox)" stroke="#334155" stroke-width="1.5"/>
   <text x="414" y="138" fill="#fbbf24" font-size="14" font-weight="700" text-anchor="middle" letter-spacing="0.8">STORAGE &amp; EVENTS</text>
-  <text x="414" y="158" fill="#64748b" font-size="12" text-anchor="middle">Nebius Object Storage (S3)</text>
+  <text x="414" y="158" fill="#64748b" font-size="12" text-anchor="middle">Nebius Object Storage (eu-north1)</text>
 
   <!-- Bucket Cylinder/Box -->
   <rect x="312" y="255" width="205" height="135" rx="12" fill="#1e293b" stroke="#fbbf24" stroke-width="1.8"/>
@@ -107,7 +111,7 @@
   <!-- Webhook Box -->
   <rect x="312" y="445" width="205" height="90" rx="10" fill="#1e293b" stroke="#38bdf8" stroke-width="1.5"/>
   <text x="414" y="475" fill="#f8fafc" font-size="14" font-weight="700" text-anchor="middle">Storage Webhook</text>
-  <text x="414" y="496" fill="#38bdf8" font-size="12" font-family="monospace" text-anchor="middle">POST /eventarc</text>
+  <text x="414" y="496" fill="#38bdf8" font-size="12" font-family="monospace" text-anchor="middle">POST /storage-event</text>
   <text x="414" y="516" fill="#94a3b8" font-size="11.5" text-anchor="middle">s3:ObjectCreated / finalized</text>
 
   <!-- Arrow Bucket -> Webhook -->
@@ -203,16 +207,17 @@
   <!-- ========================================================================= -->
   <rect x="1492" y="108" width="340" height="235" rx="14" fill="url(#gpuGrad)" stroke="#76B900" stroke-width="2"/>
   <text x="1662" y="136" fill="#a3e635" font-size="14" font-weight="700" text-anchor="middle" letter-spacing="0.6">NEBIUS SERVERLESS GPU JOBS</text>
-  <text x="1662" y="156" fill="#bef264" font-size="12" font-family="monospace" text-anchor="middle">gpu-l40s-a · 1gpu-8vcpu-32gb</text>
+  <text x="1662" y="156" fill="#bef264" font-size="11.5" font-family="monospace" text-anchor="middle">gpu-l40s-a · 1gpu-16vcpu-64gb · eu-north1</text>
 
   <rect x="1512" y="170" width="300" height="152" rx="10" fill="#0d1908" stroke="#76B900" stroke-width="1.5"/>
-  <text x="1662" y="196" fill="#f8fafc" font-size="14.5" font-weight="700" text-anchor="middle">NVIDIA Clara Parabricks</text>
-  <text x="1662" y="216" fill="#76B900" font-size="11" font-family="monospace" text-anchor="middle">nvcr.io/nvidia/clara/clara-parabricks:4.3.0-1</text>
-  <line x1="1526" y1="226" x2="1798" y2="226" stroke="#2d4a1e" stroke-width="1"/>
-  <text x="1526" y="246" fill="#d9f99d" font-size="11.5" font-family="monospace">pbrun deepvariant \</text>
-  <text x="1526" y="264" fill="#d9f99d" font-size="11.5" font-family="monospace">  --ref Homo_sapiens_assembly38 \</text>
-  <text x="1526" y="282" fill="#d9f99d" font-size="11.5" font-family="monospace">  --in-bam sample.bam --num-gpus 1 \</text>
-  <text x="1526" y="300" fill="#fde047" font-size="11.5" font-family="monospace">  --out-variants output.vcf.gz</text>
+  <text x="1662" y="194" fill="#f8fafc" font-size="14" font-weight="700" text-anchor="middle">NVIDIA Clara Parabricks (6.05s)</text>
+  <text x="1662" y="212" fill="#76B900" font-size="10.5" font-family="monospace" text-anchor="middle">aijob-e00p9xmknz4yphfvmm · L40S 48GB</text>
+  <line x1="1526" y1="222" x2="1798" y2="222" stroke="#2d4a1e" stroke-width="1"/>
+  <text x="1526" y="242" fill="#d9f99d" font-size="11" font-family="monospace">pbrun deepvariant \</text>
+  <text x="1526" y="260" fill="#d9f99d" font-size="11" font-family="monospace">  --ref ucsc.hg19.chr20.unittest.fasta \</text>
+  <text x="1526" y="278" fill="#d9f99d" font-size="11" font-family="monospace">  --in-bam sample.bam --num-gpus 1 \</text>
+  <text x="1526" y="296" fill="#fde047" font-size="11" font-family="monospace">  --out-variants output.vcf &amp;&amp; gzip -c</text>
+  <text x="1526" y="313" fill="#a3e635" font-size="10.5" font-weight="700">✓ 78 Records / 72 PASS Called on L40S</text>
 
   <!-- ========================================================================= -->
   <!-- COLUMN 4 (BOTTOM RIGHT): MEMORY BANK & CRYPTOGRAPHIC VAULT -->
