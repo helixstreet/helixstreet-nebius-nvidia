@@ -58,11 +58,14 @@ Thumbs.db
 .agents/
 .claude/
 
-# Local voiceover takes (keep out of the repo)
+# Local voiceover takes & hackathon submission drafts (keep out of the repo)
 docs/*.mp3
 *.mp4
 *.wav
 docs/video-*.md
+docs/devpost-*
+docs/nebius_nvidia_hackathon.json
+docs/blog-post.md
 
 # Local Nebius runtime data & credentials (never commit)
 .helixstreet_nebius_data/
