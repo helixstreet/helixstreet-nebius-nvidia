@@ -3,12 +3,15 @@
 # VCF directly to the drop-zone and triggers the analysis fleet on NVIDIA Nemotron 3 Ultra.
 set -euo pipefail
 
-USER_ID="${1:-pgx-demo-$(date +%s)}"
+USER_ID="${1:-pgx-demo-001}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-PYTHON_BIN="${REPO_ROOT}/helixstreet-agent/.venv/bin/python"
-FLEET_URL="${FLEET_URL:-http://127.0.0.1:8080}"
+PYTHON_BIN="${REPO_ROOT}/.venv/bin/python"
+FLEET_URL="${FLEET_URL:-http://127.0.0.1:8000}"
 
+if [[ ! -x "$PYTHON_BIN" ]]; then
+  PYTHON_BIN="${REPO_ROOT}/helixstreet-agent/.venv/bin/python"
+fi
 if [[ ! -x "$PYTHON_BIN" ]]; then
   PYTHON_BIN="python3"
 fi
@@ -35,8 +38,10 @@ with open(vcf_path, "r") as f:
     vcf_blob.upload_from_string(f.read())
 
 print(f"==> Staged PGx panel in s3://{config.DATA_BUCKET}/uploads/{user_id}/pgx-panel.vcf")
+headers = {"X-Helix-Token": os.getenv("HELIX_API_TOKEN", config.HELIX_API_TOKEN)}
 resp = requests.post(
     f"{fleet_url}/storage-event",
+    headers=headers,
     json={"bucket": config.DATA_BUCKET, "name": f"uploads/{user_id}/pgx-panel.vcf", "generation": str(int(time.time() * 1000))},
     timeout=300,
 )

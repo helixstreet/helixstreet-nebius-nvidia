@@ -16,8 +16,9 @@ import json
 import logging
 import os
 import re
+from pathlib import Path
 
-from fastapi import FastAPI, Request
+from fastapi import Depends, FastAPI, HTTPException, Request
 
 from fleet import clients, config
 from fleet.agents import analysis_pipeline, ingest_pipeline
@@ -33,15 +34,23 @@ app = FastAPI(
     title="Helixstreet — The Consent-Native Pharmacogenomics Layer (Nebius Token Factory + NVIDIA Nemotron 3)"
 )
 
-_BAM_RE = re.compile(r"^uploads/(?P<uid>[^/]+)/[^/]+\.bam$")
-_VCF_UPLOAD_RE = re.compile(r"^uploads/(?P<uid>[^/]+)/[^/]+\.vcf(\.gz)?$")
-_RESULT_RE = re.compile(r"^results/(?P<uid>[^/]+)/deepvariant/output\.vcf\.gz$")
+_BAM_RE = re.compile(r"^uploads/(?P<uid>[A-Za-z0-9._-]{1,40})/[^/]+\.bam$")
+_VCF_UPLOAD_RE = re.compile(r"^uploads/(?P<uid>[A-Za-z0-9._-]{1,40})/[^/]+\.vcf(\.gz)?$")
+_RESULT_RE = re.compile(r"^results/(?P<uid>[A-Za-z0-9._-]{1,40})/deepvariant/output\.vcf\.gz$")
+
+
+def _require_helix_token(request: Request) -> None:
+    """Enforces `X-Helix-Token == env HELIX_API_TOKEN` on state-mutating POST endpoints."""
+    expected = os.getenv("HELIX_API_TOKEN", config.HELIX_API_TOKEN).strip()
+    provided = (request.headers.get("X-Helix-Token") or "").strip()
+    if not expected or provided != expected:
+        raise HTTPException(status_code=401, detail="Invalid or missing X-Helix-Token header.")
 
 
 def _seed_default_kinship_vault():
     """Seeds the three synthetic kinship demo genomes (kin-parent, kin-child,
     kin-unrelated) into genome_vault if not already present."""
-    db = clients.firestore()
+    db = clients.state_store()
     if db.collection(config.COLL_VAULT).document("kin-parent").get().exists:
         return
     panel = [f"rs-demo-{i:02d}" for i in range(12)]
@@ -82,7 +91,7 @@ def startup():
 def healthz():
     return {
         "status": "ok",
-        "category": "First Consent-Native Pharmacogenomics Layer (0 Raw-Genome Bytes Exposed)",
+        "category": "First Consent-Native Pharmacogenomics Layer (0 Raw-Genome Bytes Released to Requesters)",
         "platform": "Nebius AI Cloud + Nebius Token Factory",
         "token_factory_base_url": config.NEBIUS_BASE_URL,
         "reasoning_model": config.NEMOTRON_ULTRA_MODEL,
@@ -91,15 +100,15 @@ def healthz():
         "pricing_per_1m_usd": config.NEBIUS_MODEL_PRICING,
         "variant_caller": "NVIDIA Clara Parabricks 4.3 (pbrun deepvariant)",
         "parabricks_image": config.PARABRICKS_IMAGE,
-        "bionemo_protein_design_model": "nvidia/RFD4-Proteina",
-        "bionemo_nim_image": "nvcr.io/nim/ipd/rfd4-proteina:latest",
         "serverless_gpu_platform": f"{config.NEBIUS_GPU_PLATFORM} ({config.NEBIUS_GPU_PRESET})",
         "parabricks_execution_mode": (
             "nebius_serverless_gpu" if config.NEBIUS_PARENT_ID else "parabricks_na12878_replay_fixture"
         ),
         "enclave_public_key_ed25519": cv.get_enclave_public_key_hex(),
+        "enclave_trusted_keys": cv.trusted_enclave_public_keys(),
         "api_key_configured": bool(config.NEBIUS_API_KEY),
         "tavily_configured": bool(os.getenv("TAVILY_API_KEY", "").strip()),
+        "llm_quota": clients.get_llm_quota_status(),
     }
 
 
@@ -110,10 +119,10 @@ async def ask_pharmacogenomics(request: Request):
     body = await request.json()
     return cv.ask_pharmacogenomic_attestation(
         patient_id=body.get("patient_id", "pgx-demo-001"),
-        requester=body.get("requester", "hirsch-pharmacy-basel"),
+        requester=body.get("requester", "demo-pharmacy-basel"),
         purpose=body.get("purpose", "drug_safety_dispensing_check"),
         drug=body.get("drug", "clopidogrel"),
-        question=body.get("question", ""),
+        question=str(body.get("question", ""))[:500],
         use_nemotron=bool(body.get("use_nemotron", True)),
     )
 
@@ -122,7 +131,13 @@ async def ask_pharmacogenomics(request: Request):
 async def verify_attestation_endpoint(request: Request):
     """Cryptographically verifies an Ed25519-signed phenotype attestation bundle."""
     body = await request.json()
-    return cv.verify_signed_attestation(body)
+    trusted_key = body.get("trusted_public_key_ed25519")
+    trusted_keys = body.get("trusted_public_keys_ed25519")
+    return cv.verify_signed_attestation(
+        body,
+        trusted_public_key_hex=trusted_key,
+        trusted_public_keys=trusted_keys if isinstance(trusted_keys, list) else None,
+    )
 
 
 @app.get("/consents/{patient_id}")
@@ -134,19 +149,19 @@ def get_patient_consents(patient_id: str):
     }
 
 
-@app.post("/consents/grant")
+@app.post("/consents/grant", dependencies=[Depends(_require_helix_token)])
 async def grant_patient_consent(request: Request):
     body = await request.json()
     return cv.grant_consent(
         patient_id=body.get("patient_id", "pgx-demo-001"),
-        requester=body.get("requester", "hirsch-pharmacy-basel"),
-        requester_name=body.get("requester_name", "Hirsch Apotheke Basel (Community Pharmacy)"),
+        requester=body.get("requester", "demo-pharmacy-basel"),
+        requester_name=body.get("requester_name", "Demo Pharmacy Basel (Synthetic Community Pharmacy)"),
         purpose=body.get("purpose", "drug_safety_dispensing_check"),
         consent_id=body.get("consent_id", "cns-pharm-basel-001"),
     )
 
 
-@app.post("/consents/revoke")
+@app.post("/consents/revoke", dependencies=[Depends(_require_helix_token)])
 async def revoke_patient_consent(request: Request):
     body = await request.json()
     return cv.revoke_consent(
@@ -160,20 +175,21 @@ async def revoke_patient_consent(request: Request):
 async def fhir_medication_request_webhook(request: Request):
     """Always-On Living Twin HL7 FHIR R4 MedicationRequest Watcher endpoint."""
     body = await request.json()
+    use_nemotron = bool(body.get("use_nemotron", True))
     if body.get("resourceType") != "MedicationRequest":
         body = cv.build_fhir_medication_request(
             patient_id=body.get("patient_id", "pgx-demo-001"),
             drug=body.get("drug", "escitalopram"),
             dose_text=body.get("dose_text", "20 mg orally once daily"),
-            prescriber=body.get("prescriber", "EHR Prescribing Clinician"),
+            prescriber=body.get("prescriber", "Dr. Demo Prescriber (Synthetic)"),
         )
     return cv.ingest_fhir_medication_request(
         fhir_resource=body,
-        use_nemotron=bool(body.get("use_nemotron", True)),
+        use_nemotron=use_nemotron,
     )
 
 
-@app.post("/rwe/outcome")
+@app.post("/rwe/outcome", dependencies=[Depends(_require_helix_token)])
 async def record_closed_loop_rwe(request: Request):
     """Consented Closed-Loop Real-World Evidence (RWE) outcome endpoint."""
     body = await request.json()
@@ -187,7 +203,7 @@ async def record_closed_loop_rwe(request: Request):
     )
 
 
-@app.post("/guidelines/update")
+@app.post("/guidelines/update", dependencies=[Depends(_require_helix_token)])
 async def guideline_update_webhook(request: Request):
     """Always-On Living Twin CPIC/DPWG Guideline Version Watcher endpoint."""
     body = await request.json()
@@ -209,7 +225,7 @@ async def guideline_update_webhook(request: Request):
 
 @app.post("/federated/cohort-query")
 async def federated_cohort_query_endpoint(request: Request):
-    """Zero-Genome-Pooling Federated PGx & Equity Cohort Aggregator."""
+    """Simulated scenario: Zero-Genome-Pooling Federated PGx & Equity Cohort Aggregator."""
     body = await request.json()
     return cv.run_federated_cohort_query(
         gene=body.get("gene", "CYP2C19"),
@@ -217,15 +233,15 @@ async def federated_cohort_query_endpoint(request: Request):
     )
 
 
-@app.post("/a2a/negotiate")
+@app.post("/a2a/negotiate", dependencies=[Depends(_require_helix_token)])
 async def a2a_negotiate_endpoint(request: Request):
-    """Agent-to-Agent (A2A) Zero-Knowledge Regimen Negotiation (`Hospital EHR Agent` <-> `Patient Living Twin`)."""
+    """Simulated scenario: Agent-to-Agent (A2A) Minimal-Disclosure Regimen Negotiation."""
     body = await request.json()
     return cv.negotiate_a2a_polypharmacy_regimen(
         patient_id=body.get("patient_id", "pgx-demo-001"),
-        requester=body.get("requester", "usb-university-hospital-basel"),
+        requester=body.get("requester", "demo-university-hospital"),
         purpose=body.get("purpose", "inpatient_prescribing_safety"),
-        hospital_agent_did=body.get("hospital_agent_did", "did:web:usb.ch:cardiology-icu-agent"),
+        hospital_agent_did=body.get("hospital_agent_did", "did:web:demo-hospital.example:cardiology-icu-agent"),
         clinical_protocol=body.get("clinical_protocol", "Post-PCI Acute Coronary Syndrome + ICU Stabilization Regimen"),
         proposed_drugs=body.get("proposed_drugs"),
     )
@@ -233,7 +249,7 @@ async def a2a_negotiate_endpoint(request: Request):
 
 @app.get("/twin/timeline/{patient_id}")
 async def twin_timeline_endpoint(patient_id: str):
-    """10-Year Lifelong Biological Time-Machine (2026–2036)."""
+    """Simulated scenario: Hypothetical 10-year timeline (2026–2036)."""
     return cv.get_lifelong_timeline(patient_id=patient_id)
 
 
@@ -245,9 +261,7 @@ async def wallet_vc_endpoint(patient_id: str):
 
 @app.post("/bionemo/rfd4-design")
 async def bionemo_rfd4_design_endpoint(request: Request):
-    """Stage 3 Programmable Biology Rescue: NVIDIA BioNeMo RFD4-Proteina
-    (`nvidia/RFD4-Proteina` / `nvcr.io/nim/ipd/rfd4-proteina:latest`)
-    joint sequence-and-all-atom structure co-design."""
+    """Planned roadmap integration for NVIDIA BioNeMo RFD4-Proteina (mock, not executed)."""
     from fleet.tools.pharmacogenomics import design_rfd4_proteina_rescue
 
     body = await request.json()
@@ -260,41 +274,43 @@ async def bionemo_rfd4_design_endpoint(request: Request):
 
 @app.get("/nebius/datalab-export/{patient_id}")
 async def nebius_datalab_export_endpoint(patient_id: str = "pgx-demo-001"):
-    """Exports consented Step 6 Closed-Loop RWE outcomes into a signed Nebius
-    Token Factory `Data Lab` JSONL dataset for Serverless LoRA fine-tuning and
-    Custom Speculator training (`raw_genome_bytes_exposed = 0`)."""
+    """JSONL in Token Factory Data Lab SFT format; nothing is uploaded."""
     return cv.export_nebius_datalab_sft_dataset(patient_id=patient_id)
 
 
+@app.get("/nebius/platform-usage")
 @app.get("/nebius/enterprise-capabilities")
-async def nebius_enterprise_capabilities_endpoint(cohort_size: int = 10000):
-    """Returns signed economics & architecture telemetry for the 2026 Nebius
-    Token Factory (`Fast` / `Base` / `Batch -50%`, `Custom Speculator`,
-    `Data Lab` + `Serverless LoRA`) & Nebius AI Cloud (`SecretStash`, `Object
-    Storage Enhanced`) stack."""
-    return cv.get_nebius_2026_enterprise_capabilities(cohort_size=cohort_size)
+async def nebius_platform_usage_endpoint():
+    """Returns verified Nebius Token Factory and Nebius AI Cloud resources
+    actually used by Helixstreet, plus an explicit roadmap list."""
+    return cv.get_nebius_platform_usage()
 
 
 def _parse_gcs_event(body: dict) -> tuple[str, str, str]:
     """Accepts direct storage event payloads, Pub/Sub push envelopes, or S3 event notifications."""
     if "bucket" in body and "name" in body:  # direct storage event data
-        return body["bucket"], body["name"], str(body.get("generation", ""))
-    if "message" in body:  # push envelope
+        bucket, name, gen = body["bucket"], body["name"], str(body.get("generation", ""))
+    elif "message" in body:  # push envelope
         data = json.loads(base64.b64decode(body["message"]["data"]).decode())
-        return data["bucket"], data["name"], str(data.get("generation", ""))
-    if "Records" in body and body["Records"]:  # S3 / Nebius Object Storage notification
+        bucket, name, gen = data["bucket"], data["name"], str(data.get("generation", ""))
+    elif "Records" in body and body["Records"]:  # S3 / Nebius Object Storage notification
         rec = body["Records"][0].get("s3", {})
         bucket = rec.get("bucket", {}).get("name", config.DATA_BUCKET)
         name = rec.get("object", {}).get("key", "")
         gen = str(rec.get("object", {}).get("eTag") or rec.get("object", {}).get("sequencer") or "1")
-        if bucket and name:
-            return bucket, name, gen
-    raise ValueError(f"Unrecognized event payload keys: {list(body)}")
+        if not (bucket and name):
+            raise ValueError(f"Unrecognized S3 event payload: {list(body)}")
+    else:
+        raise ValueError(f"Unrecognized event payload keys: {list(body)}")
+
+    if ".." in Path(name).parts or ".." in str(bucket) or str(name).startswith("/"):
+        raise ValueError(f"Path traversal rejected in storage event: {bucket}/{name}")
+    return bucket, name, gen
 
 
 def _event_ref(bucket: str, name: str, generation: str):
     doc_id = re.sub(r"[^A-Za-z0-9_-]", "_", f"{bucket}_{name}_{generation}")[:900]
-    return clients.firestore().collection(config.COLL_EVENTS).document(doc_id)
+    return clients.state_store().collection(config.COLL_EVENTS).document(doc_id)
 
 
 def _already_processed(bucket: str, name: str, generation: str) -> bool:
@@ -305,8 +321,7 @@ def _already_processed(bucket: str, name: str, generation: str) -> bool:
     return False
 
 
-@app.post("/storage-event")
-@app.post("/eventarc", include_in_schema=False)
+@app.post("/storage-event", dependencies=[Depends(_require_helix_token)])
 async def handle_storage_event(request: Request):
     body = await request.json()
     try:

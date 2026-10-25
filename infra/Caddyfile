@@ -1,0 +1,22 @@
+{
+	auto_https off
+	admin off
+}
+
+:{$PORT:8080} {
+	encode gzip
+
+	# FastAPI fleet (uvicorn runs with --root-path /api so Swagger at /api/docs resolves correctly)
+	redir /api /api/docs 302
+	handle_path /api/* {
+		reverse_proxy 127.0.0.1:8000
+	}
+	handle /healthz {
+		reverse_proxy 127.0.0.1:8000
+	}
+
+	# Streamlit Command Center (HTTP + the /_stcore/stream websocket pass through unchanged)
+	handle {
+		reverse_proxy 127.0.0.1:8501
+	}
+}

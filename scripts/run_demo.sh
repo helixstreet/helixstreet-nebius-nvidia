@@ -4,12 +4,15 @@
 # fleet's /storage-event webhook.
 set -euo pipefail
 
-USER_ID="${1:-demo-na12878-$(date +%s)}"
+USER_ID="${1:-demo-na12878}"
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "${SCRIPT_DIR}/.." && pwd)"
-PYTHON_BIN="${REPO_ROOT}/helixstreet-agent/.venv/bin/python"
-FLEET_URL="${FLEET_URL:-http://127.0.0.1:8080}"
+PYTHON_BIN="${REPO_ROOT}/.venv/bin/python"
+FLEET_URL="${FLEET_URL:-http://127.0.0.1:8000}"
 
+if [[ ! -x "$PYTHON_BIN" ]]; then
+  PYTHON_BIN="${REPO_ROOT}/helixstreet-agent/.venv/bin/python"
+fi
 if [[ ! -x "$PYTHON_BIN" ]]; then
   PYTHON_BIN="python3"
 fi
@@ -32,17 +35,30 @@ manifest = {
     "consent": "research-use-only, synthetic public sample NA12878",
 }
 bucket.blob(f"uploads/{user_id}/manifest.json").upload_from_string(json.dumps(manifest, indent=2))
-bucket.blob(f"uploads/{user_id}/sample.bam.bai").upload_from_string(b"BAI\x01NA12878_INDEX")
+bai_blob = bucket.blob(f"uploads/{user_id}/sample.bam.bai")
+if not bai_blob.exists():
+    bai_blob.upload_from_string(b"BAI\x01NA12878_INDEX")
 bam_blob = bucket.blob(f"uploads/{user_id}/sample.bam")
-bam_blob.upload_from_string(
-    b"BAM\x01@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chr20\tLN:63025520\n"
-    b"@RG\tID:NA12878_S1\tSM:NA12878\tPL:ILLUMINA\n"
-)
+if not bam_blob.exists():
+    bam_blob.upload_from_string(
+        b"BAM\x01@HD\tVN:1.6\tSO:coordinate\n@SQ\tSN:chr20\tLN:63025520\n"
+        b"@RG\tID:NA12878_S1\tSM:NA12878\tPL:ILLUMINA\n"
+    )
 print(f"==> Staged manifest + BAM in s3://{config.DATA_BUCKET}/uploads/{user_id}/")
+headers = {"X-Helix-Token": os.getenv("HELIX_API_TOKEN", config.HELIX_API_TOKEN)}
 resp = requests.post(
     f"{fleet_url}/storage-event",
+    headers=headers,
     json={"bucket": config.DATA_BUCKET, "name": f"uploads/{user_id}/sample.bam", "generation": str(int(time.time() * 1000))},
     timeout=300,
 )
 print(f"==> Fleet response ({resp.status_code}): {resp.text[:400]}")
+db = clients.state_store()
+for _ in range(90):
+    snap = db.collection(config.COLL_STATE).document(user_id).get()
+    stage = (snap.to_dict() or {}).get("stage") if snap.exists else None
+    if stage in ("TWIN_SAVED", "TWIN_PERSISTED"):
+        print(f"==> Async analysis pipeline completed for {user_id} (stage={stage})")
+        break
+    time.sleep(2)
 PY

@@ -1,12 +1,18 @@
-"""PGx zygosity handling, CPIC reference matching, Tavily Bearer auth, and ClinicalTrials.gov matcher."""
+"""PGx zygosity handling, CPIC reference matching, Tavily Bearer auth, Tavily Extract, and ClinicalTrials.gov matcher."""
 import json
+import tempfile
 
+from fleet import clients, config
 from fleet.tools.pharmacogenomics import (
     PGX_REFERENCE,
     PGX_STRUCTURES,
+    RFD4_RESCUE_TARGETS,
     _zygosity,
+    design_rfd4_proteina_rescue,
+    fetch_guideline_passage_tavily,
     fetch_openfda_drug_label,
     match_pgx_variants,
+    _trim_passage,
     search_clinical_trials_tavily,
     search_tavily_clinical_guidelines,
 )
@@ -69,7 +75,7 @@ class TestMatching:
         assert "Research-grade" in result["disclaimer"]
 
 
-class TestTavilyClinicalSearch:
+class TestTavilyClinicalSearchAndExtract:
     def test_returns_empty_list_when_key_missing(self, monkeypatch):
         monkeypatch.delenv("TAVILY_API_KEY", raising=False)
         assert search_tavily_clinical_guidelines("CYP2C19 clopidogrel") == []
@@ -105,6 +111,51 @@ class TestTavilyClinicalSearch:
         assert captured_headers.get("Authorization") == "Bearer tvly-test-key"
         assert res[0]["source"] == "Tavily Clinical Search"
         assert "cpicpgx.org" in res[0]["url"]
+        assert "retrieved_at" in res[0]
+        assert "domains" in res[0]
+
+    def test_tavily_extract_fetches_and_caches_passage(self, monkeypatch):
+        import requests
+
+        with tempfile.TemporaryDirectory() as tmp:
+            monkeypatch.setattr(config, "DATA_DIR", tmp)
+            monkeypatch.setattr(config, "HELIX_DATA_DIR", tmp)
+            clients.state_store.cache_clear()
+            monkeypatch.setenv("TAVILY_API_KEY", "tvly-test-key")
+
+            class FakeExtractResp:
+                def raise_for_status(self):
+                    pass
+
+                def json(self):
+                    return {
+                        "results": [
+                            {
+                                "url": "https://cpicpgx.org/guidelines/guideline-for-clopidogrel-and-cyp2c19/",
+                                "raw_content": (
+                                    "Overview of Clopidogrel.\n\n"
+                                    "CPIC Recommendation for CYP2C19 poor metabolizer patients: "
+                                    "Avoid standard-dose clopidogrel and prescribe prasugrel or ticagrelor."
+                                ),
+                            }
+                        ]
+                    }
+
+            monkeypatch.setattr(requests, "post", lambda *a, **kw: FakeExtractResp())
+            passage = fetch_guideline_passage_tavily(
+                "https://cpicpgx.org/guidelines/guideline-for-clopidogrel-and-cyp2c19/",
+                "poor",
+            )
+            assert passage["source"] == "tavily_extract"
+            assert "poor metabolizer" in passage["text"].lower()
+            assert "retrieved_at" in passage
+
+    def test_trim_passage_cuts_on_sentence_boundary(self):
+        long_text = ("CYP2C19 poor metabolizers show reduced clopidogrel activation. " * 30).strip()
+        trimmed = _trim_passage(long_text, 300)
+        assert len(trimmed) <= 300
+        assert trimmed.endswith(".")
+        assert _trim_passage("short passage", 300) == "short passage"
 
     def test_clinical_trials_matcher_extracts_nct_id(self, monkeypatch):
         import requests
@@ -132,11 +183,12 @@ class TestTavilyClinicalSearch:
 
 
 class TestOpenFDALabelAndStructures:
-    def test_pgx_structures_cover_all_six_demo_genes(self):
+    def test_pgx_structures_cover_all_six_demo_genes_with_verified_cyp3a5_pdb(self):
         for gene in ("CYP2C19", "DPYD", "CYP2C9", "VKORC1", "CYP3A5", "SLCO1B1"):
             assert gene in PGX_STRUCTURES
             assert len(PGX_STRUCTURES[gene]["pdb_id"]) == 4
             assert PGX_STRUCTURES[gene]["highlight_residues"]
+        assert PGX_STRUCTURES["CYP3A5"]["pdb_id"] == "5VEU"
 
     def test_openfda_fallback_returns_boxed_warning_when_offline(self, monkeypatch):
         import requests
@@ -149,17 +201,13 @@ class TestOpenFDALabelAndStructures:
         assert label["drug"] == "clopidogrel"
         assert "CYP2C19" in label["boxed_warning"]
 
-    def test_rfd4_proteina_rescue_design_covers_all_six_pharmacogenes(self):
-        from fleet.tools.pharmacogenomics import RFD4_RESCUE_TARGETS, design_rfd4_proteina_rescue
-
+    def test_rfd4_proteina_returns_mock_not_executed_without_fabricated_scores(self):
         assert set(RFD4_RESCUE_TARGETS.keys()) == {"DPYD", "CYP2C19", "CYP2C9", "VKORC1", "CYP3A5", "SLCO1B1"}
         res = design_rfd4_proteina_rescue(gene="DPYD", patient_id="pgx-demo-001", reward_beam_width=8)
+        assert res["execution_mode"] == "mock_not_executed"
         assert res["model_id"] == "nvidia/RFD4-Proteina"
         assert res["nim_container"] == "nvcr.io/nim/ipd/rfd4-proteina:latest"
-        assert res["raw_genome_bytes_exposed"] == 0
-        assert res["plddt"] > 90.0
-        assert res["iptm"] > 0.80
-        assert "ATOM      1" in res["binder_pdb_block"]
-        assert "HELIX    1" in res["binder_pdb_block"]
-        assert len(res["reward_guided_beam_search"]) == 4
-        assert len(res["signature_ed25519"]) == 128
+        assert "plddt" not in res
+        assert "iptm" not in res
+        assert "plddt" not in res["design_spec"]
+        assert "binder_pdb_block" not in res

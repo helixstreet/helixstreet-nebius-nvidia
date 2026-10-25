@@ -1,3 +1,1 @@
-import os
-
-os.environ.setdefault("GOOGLE_CLOUD_PROJECT", "helixstreet-agent")
+"""Pytest configuration for Helixstreet agent tests."""

@@ -163,27 +163,30 @@ def _build_parabricks_command(user_id: str, bam_gcs_uri: str, output_vcf_gcs: st
     )
 
 
-def _simulate_async_vcf_landing(user_id: str, object_name: str, delay_sec: float = 3.5) -> None:
+def _simulate_async_vcf_landing(user_id: str, object_name: str, delay_sec: float = 10.0) -> None:
     """Stages the verified GIAB NA12878 chr20 VCF replay fixture into the bucket and
-    fires the `/storage-event` (alias `/eventarc`) webhook after `delay_sec` so the
-    ingest pipeline finishes its turn first and the analysis pipeline wakes up asynchronously."""
+    fires the `/storage-event` webhook after `delay_sec` so the ingest pipeline
+    finishes its turn first and the analysis pipeline wakes up asynchronously."""
 
     def _worker():
         time.sleep(delay_sec)
         try:
-            compressed = gzip.compress(_DEMO_NA12878_VCF.encode("utf-8"))
             blob = clients.storage().bucket(config.DATA_BUCKET).blob(object_name)
-            blob.upload_from_string(compressed)
-            log.info(
-                "Staged GIAB NA12878 chr20 VCF replay fixture: wrote %s (%d bytes)",
-                object_name,
-                len(compressed),
-            )
+            if not blob.exists():
+                compressed = gzip.compress(_DEMO_NA12878_VCF.encode("utf-8"))
+                blob.upload_from_string(compressed)
+                log.info(
+                    "Staged GIAB NA12878 chr20 VCF replay fixture: wrote %s (%d bytes)",
+                    object_name,
+                    len(compressed),
+                )
             import requests
 
-            fleet_url = os.getenv("FLEET_URL", "http://127.0.0.1:8080")
+            fleet_url = os.getenv("FLEET_URL", config.FLEET_URL)
+            api_token = os.getenv("HELIX_API_TOKEN", config.HELIX_API_TOKEN)
             resp = requests.post(
                 f"{fleet_url.rstrip('/')}/storage-event",
+                headers={"X-Helix-Token": api_token},
                 json={
                     "bucket": config.DATA_BUCKET,
                     "name": object_name,

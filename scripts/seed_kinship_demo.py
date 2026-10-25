@@ -22,7 +22,7 @@ GENOTYPES = {
 
 
 def main():
-    db = clients.firestore()
+    db = clients.state_store()
     for uid, gts in GENOTYPES.items():
         records = [
             {"key": PANEL[i], "genotype": g, "salt": f"seed-{uid}-{i}"}

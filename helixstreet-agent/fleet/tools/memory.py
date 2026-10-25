@@ -11,39 +11,50 @@ from .. import clients, config
 
 log = logging.getLogger(__name__)
 
+_CANDIDATE_VCF_PATHS = (
+    "results/{user_id}/deepvariant/output.vcf.gz",
+    "results/{user_id}/deepvariant/output.vcf",
+    "uploads/{user_id}/pgx-panel.vcf",
+    "uploads/{user_id}/panel.vcf",
+    "uploads/{user_id}/panel.vcf.gz",
+    "uploads/{user_id}/calls.vcf.gz",
+    "uploads/{user_id}/calls.vcf",
+)
+
+
+def _find_user_vcf_uri(user_id: str) -> str | None:
+    bucket = clients.storage().bucket(config.DATA_BUCKET)
+    for rel_tmpl in _CANDIDATE_VCF_PATHS:
+        rel_path = rel_tmpl.format(user_id=user_id)
+        try:
+            blob = bucket.blob(rel_path)
+            if blob.exists():
+                return f"s3://{config.DATA_BUCKET}/{rel_path}"
+        except Exception:
+            continue
+    return None
+
 
 def _ensure_genome_committed(user_id: str) -> dict | None:
     """Ensures a per-variant Merkle commitment exists in genome_vault for user_id.
     If the analyst agent skipped commit_genome or the steward passed the wrong hash,
     this deterministically seals the user's VCF and returns the vault document."""
-    vault_ref = clients.firestore().collection(config.COLL_VAULT).document(user_id)
+    vault_ref = clients.state_store().collection(config.COLL_VAULT).document(user_id)
     snap = vault_ref.get()
     if snap.exists:
         return snap.to_dict()
 
-    # Locate the user's VCF in storage and commit it deterministically
     from .zkproof import commit_genome
 
-    bucket = clients.storage().bucket(config.DATA_BUCKET)
-    candidate_blobs = [
-        f"results/{user_id}/deepvariant/output.vcf.gz",
-        f"results/{user_id}/deepvariant/output.vcf",
-        f"uploads/{user_id}/panel.vcf",
-        f"uploads/{user_id}/panel.vcf.gz",
-        f"uploads/{user_id}/calls.vcf.gz",
-        f"uploads/{user_id}/calls.vcf",
-    ]
-    for rel_path in candidate_blobs:
-        blob = bucket.blob(rel_path)
-        if blob.exists():
-            vcf_uri = f"s3://{config.DATA_BUCKET}/{rel_path}"
-            try:
-                commit_genome(user_id, vcf_uri)
-                snap2 = vault_ref.get()
-                if snap2.exists:
-                    return snap2.to_dict()
-            except Exception as e:
-                log.warning("Auto-commit_genome failed for %s (%s): %s", user_id, vcf_uri, e)
+    vcf_uri = _find_user_vcf_uri(user_id)
+    if vcf_uri:
+        try:
+            commit_genome(user_id, vcf_uri)
+            snap2 = vault_ref.get()
+            if snap2.exists:
+                return snap2.to_dict()
+        except Exception as e:
+            log.warning("Auto-commit_genome failed for %s (%s): %s", user_id, vcf_uri, e)
     return None
 
 
@@ -70,7 +81,20 @@ def save_digital_twin(user_id: str, twin_json: str) -> str:
         data["genome_commitment_root"] = vault_doc["root"]
         data["sealed_markers"] = len(vault_doc.get("records", []))
 
-    clients.firestore().collection(config.COLL_TWINS).document(user_id).set(
+    # Ensure variants_called reflects full VCF variants_pass count rather than capped preview
+    vcf_uri = _find_user_vcf_uri(user_id)
+    if vcf_uri:
+        try:
+            from .genomics import parse_vcf
+
+            parsed = parse_vcf(vcf_uri)
+            if parsed.get("variants_pass") is not None:
+                data["variants_called"] = parsed["variants_pass"]
+                data["variants_total"] = parsed["variants_total"]
+        except Exception as e:
+            log.debug("VCF pass count sync skipped for %s: %s", user_id, e)
+
+    clients.state_store().collection(config.COLL_TWINS).document(user_id).set(
         {
             "twin": data,
             "last_updated": clients.SERVER_TIMESTAMP,
@@ -89,7 +113,7 @@ def update_pipeline_state(user_id: str, stage: str, details: str) -> str:
         stage: One of INTAKE_DONE, VARIANT_CALLING_RUNNING, ANALYSIS_DONE, TWIN_SAVED, FAILED.
         details: Context needed to resume, e.g. the Nebius Serverless Job ID or output URI.
     """
-    clients.firestore().collection(config.COLL_STATE).document(user_id).set(
+    clients.state_store().collection(config.COLL_STATE).document(user_id).set(
         {
             "stage": stage,
             "details": details,
@@ -102,7 +126,7 @@ def update_pipeline_state(user_id: str, stage: str, details: str) -> str:
 
 def append_trace(user_id: str, entry: dict) -> None:
     """Framework helper (not an agent tool): appends a reasoning-trace entry."""
-    clients.firestore().collection(config.COLL_STATE).document(user_id).set(
+    clients.state_store().collection(config.COLL_STATE).document(user_id).set(
         {"trace": clients.ArrayUnion([entry]), "updated": clients.SERVER_TIMESTAMP},
         merge=True,
     )
@@ -114,7 +138,7 @@ def get_pipeline_state(user_id: str) -> str:
     Args:
         user_id: The pipeline user/sample identifier.
     """
-    snap = clients.firestore().collection(config.COLL_STATE).document(user_id).get()
+    snap = clients.state_store().collection(config.COLL_STATE).document(user_id).get()
     if not snap.exists:
         return f"No pipeline state found for {user_id}."
     data = snap.to_dict()

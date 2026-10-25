@@ -7,7 +7,8 @@ Provides:
   Process-safe SQLite WAL document store in HELIX_DATA_DIR.
 - Object Storage:
   Nebius Object Storage (S3-compatible via boto3) + local filesystem volume
-  mirror with a unified `.bucket(name).blob(key)` interface.
+  mirror with a unified `.bucket(name).blob(key)` interface and strict
+  path-traversal validation.
 """
 from __future__ import annotations
 
@@ -17,6 +18,7 @@ import hashlib
 import json
 import logging
 import os
+import re
 import sqlite3
 import threading
 import zlib
@@ -27,6 +29,25 @@ from typing import Any, Dict, Iterable, List, Optional
 from . import config
 
 log = logging.getLogger("helixstreet.clients")
+
+_QUOTA_LOCK = threading.Lock()
+_SAFE_BUCKET_RE = re.compile(r"^[A-Za-z0-9._-]{1,80}$")
+
+
+def _safe_resolve_under_root(root: Path, rel_path: str) -> Path:
+    """Resolves `rel_path` under `root` and rejects any path traversal (`..`,
+    absolute paths, or symlink escapes outside `root`)."""
+    cleaned = (rel_path or "").strip()
+    if not cleaned or cleaned.startswith("/") or "\\" in cleaned:
+        raise ValueError(f"Invalid storage path (rejected): {rel_path!r}")
+    parts = Path(cleaned).parts
+    if any(p in ("..", ".") for p in parts):
+        raise ValueError(f"Path traversal rejected in storage key: {rel_path!r}")
+    root_resolved = root.resolve()
+    candidate = (root_resolved / cleaned).resolve()
+    if not candidate.is_relative_to(root_resolved) or candidate == root_resolved:
+        raise ValueError(f"Storage path escapes bucket root: {rel_path!r}")
+    return candidate
 
 
 class _ServerTimestampSentinel:
@@ -220,11 +241,15 @@ class NebiusBlob:
 
     def __init__(self, bucket: "NebiusBucket", name: str):
         self.bucket = bucket
-        self.name = name.lstrip("/")
+        raw_name = (name or "").strip()
+        if not raw_name or raw_name.startswith("/"):
+            raise ValueError(f"Invalid blob key: {name!r}")
+        self._resolved_local = _safe_resolve_under_root(bucket._root, raw_name)
+        self.name = raw_name
 
     @property
     def _local_path(self) -> Path:
-        return self.bucket._root / self.name
+        return self._resolved_local
 
     def exists(self) -> bool:
         if self._local_path.is_file():
@@ -301,8 +326,10 @@ class NebiusBlob:
 
 class NebiusBucket:
     def __init__(self, name: str, root_dir: Path, s3_client: Any = None):
+        if not name or not _SAFE_BUCKET_RE.match(name) or ".." in name:
+            raise ValueError(f"Invalid bucket name: {name!r}")
         self.name = name
-        self._root = root_dir / name
+        self._root = _safe_resolve_under_root(root_dir, name)
         self._root.mkdir(parents=True, exist_ok=True)
         self._s3 = s3_client
 
@@ -358,14 +385,71 @@ def token_factory():
 
 
 @lru_cache(maxsize=1)
-def firestore() -> LocalDocumentClient:
+def state_store() -> LocalDocumentClient:
     return LocalDocumentClient()
 
 
-def state_store() -> LocalDocumentClient:
-    return firestore()
+# Backwards-compatible alias
+firestore = state_store
 
 
 @lru_cache(maxsize=1)
 def storage() -> NebiusStorageClient:
     return NebiusStorageClient()
+
+
+def get_llm_quota_status() -> Dict[str, Any]:
+    """Returns today's process-wide LLM call count and limit from the Memory Bank."""
+    today = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
+    limit = int(os.getenv("HELIX_DAILY_LLM_CALLS", str(config.HELIX_DAILY_LLM_CALLS)))
+    snap = state_store().collection(config.COLL_QUOTA).document(today).get()
+    used = int(snap.get("calls_used", 0)) if snap.exists else 0
+    return {
+        "date": today,
+        "calls_used": used,
+        "used": used,
+        "daily_limit": limit,
+        "limit": limit,
+        "remaining": max(0, limit - used),
+        "allowed": used < limit,
+    }
+
+
+def consume_llm_quota(calls: int = 1, reason: str = "") -> Dict[str, Any]:
+    """Atomically checks and increments the process-wide daily LLM call counter
+    in the Memory Bank (`llm_quota` collection). Returns status dict with `allowed`."""
+    calls = max(1, int(calls))
+    today = datetime.datetime.now(datetime.timezone.utc).date().isoformat()
+    limit = int(os.getenv("HELIX_DAILY_LLM_CALLS", str(config.HELIX_DAILY_LLM_CALLS)))
+    ref = state_store().collection(config.COLL_QUOTA).document(today)
+
+    with _QUOTA_LOCK:
+        snap = ref.get()
+        used = int(snap.get("calls_used", 0)) if snap.exists else 0
+        if used + calls > limit:
+            return {
+                "allowed": False,
+                "date": today,
+                "calls_used": used,
+                "daily_limit": limit,
+                "remaining": max(0, limit - used),
+                "reason": f"Daily Token Factory LLM call limit reached ({used}/{limit} calls on {today}).",
+            }
+        new_used = used + calls
+        ref.set(
+            {
+                "date": today,
+                "calls_used": new_used,
+                "daily_limit": limit,
+                "last_reason": reason,
+                "updated_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            },
+            merge=True,
+        )
+        return {
+            "allowed": True,
+            "date": today,
+            "calls_used": new_used,
+            "daily_limit": limit,
+            "remaining": max(0, limit - new_used),
+        }

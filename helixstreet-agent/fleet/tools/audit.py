@@ -58,7 +58,7 @@ def record_audit_event(agent_name: str, action: str, details: str) -> dict:
 
 def verify_chain() -> dict:
     """Re-computes the whole chain; used by the dashboard, not by agents."""
-    coll = clients.firestore().collection(config.COLL_AUDIT)
+    coll = clients.state_store().collection(config.COLL_AUDIT)
     prev_hash, count = "GENESIS", 0
     for snap in coll.order_by("seq").stream():
         if snap.id == _HEAD_DOC:

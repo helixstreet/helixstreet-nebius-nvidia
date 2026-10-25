@@ -69,8 +69,12 @@ else
 fi
 
 echo "==> Seeding synthetic kinship genomes into Memory Bank vault..."
-"${REPO_ROOT}/helixstreet-agent/.venv/bin/python" "${REPO_ROOT}/scripts/seed_kinship_demo.py"
+PYTHON_BIN="${REPO_ROOT}/.venv/bin/python"
+if [[ ! -x "$PYTHON_BIN" ]]; then
+  PYTHON_BIN="${REPO_ROOT}/helixstreet-agent/.venv/bin/python"
+fi
+"$PYTHON_BIN" "${REPO_ROOT}/scripts/seed_kinship_demo.py"
 
 echo "==> Ready! Start the Fleet API and Command Center:"
-echo "    1. Fleet API:      cd helixstreet-agent && .venv/bin/uvicorn main:app --host 0.0.0.0 --port 8080"
-echo "    2. Command Center: cd helixstreet-ui && ../helixstreet-agent/.venv/bin/streamlit run dashboard.py --server.port 8501"
+echo "    1. Fleet API:      cd helixstreet-agent && .venv/bin/uvicorn main:app --host 127.0.0.1 --port 8000"
+echo "    2. Command Center: cd helixstreet-ui && ../helixstreet-agent/.venv/bin/streamlit run dashboard.py --server.port 8080"

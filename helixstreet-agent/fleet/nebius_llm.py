@@ -22,7 +22,7 @@ from google.genai import types
 from openai import AsyncOpenAI, APIStatusError, APITimeoutError, RateLimitError
 from pydantic import Field, PrivateAttr
 
-from . import config
+from . import clients, config
 
 log = logging.getLogger("helixstreet.nebius_llm")
 
@@ -220,6 +220,10 @@ class NebiusTokenFactoryLlm(BaseLlm):
     async def generate_content_async(
         self, llm_request: LlmRequest, stream: bool = False
     ) -> AsyncGenerator[LlmResponse, None]:
+        quota = clients.consume_llm_quota(1, reason=f"adk:{self.model}")
+        if not quota["allowed"]:
+            raise RuntimeError(quota["reason"])
+
         self._maybe_append_user_content(llm_request)
         messages = _messages_from_request(llm_request)
         tools = _tools_from_request(llm_request)

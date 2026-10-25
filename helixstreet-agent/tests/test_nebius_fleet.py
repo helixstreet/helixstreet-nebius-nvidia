@@ -1,9 +1,10 @@
 """Tests for Nebius Token Factory LLM adapter, Nemotron 3 model tiers,
 Nebius Object Storage / SQLite Memory Bank, deterministic genome sealing,
-and zero-LLM-exposure compliance guardrails."""
+path-traversal rejection, and zero-LLM-exposure compliance guardrails."""
 import json
 import tempfile
 
+import pytest
 from google.adk.models.llm_request import LlmRequest
 from google.genai import types
 
@@ -16,8 +17,7 @@ from fleet.nebius_llm import (
 )
 from fleet.registry import publish_registry
 from fleet.tools.audit import record_audit_event, verify_chain
-from fleet.tools.compliance import deidentify_manifest, screen_with_model_armor, scrub_pii
-from fleet.tools.gcs import fingerprint_gcs_object, read_gcs_text, write_gcs_text
+from fleet.tools.compliance import deidentify_manifest, screen_manifest_text, scrub_pii
 from fleet.tools.genomics import annotate_with_1000genomes
 from fleet.tools.memory import (
     append_trace,
@@ -25,6 +25,7 @@ from fleet.tools.memory import (
     save_digital_twin,
     update_pipeline_state,
 )
+from fleet.tools.storage import fingerprint_gcs_object, read_gcs_text, write_gcs_text
 from fleet.tools.variant_calling import _DEMO_NA12878_VCF
 
 
@@ -37,6 +38,15 @@ class TestNemotronModelTiers:
         assert agents.pharmacist_agent.model.model == config.NEMOTRON_ULTRA_MODEL
         assert agents.steward_agent.model.model == config.NEMOTRON_SUPER_MODEL
 
+    def test_intake_agent_cannot_bypass_deidentification(self):
+        tool_names = [t.__name__ for t in agents.intake_agent.tools]
+        assert tool_names == [
+            "deidentify_manifest",
+            "fingerprint_gcs_object",
+            "record_audit_event",
+        ]
+        assert "read_gcs_text" not in tool_names
+
     def test_healthz_exposes_nebius_models_and_pricing(self):
         h = main.healthz()
         assert h["status"] == "ok"
@@ -45,6 +55,7 @@ class TestNemotronModelTiers:
         assert "nemotron-3-super" in h["steward_model"]
         assert "Nemotron-3-Nano" in h["intake_model"]
         assert config.NEMOTRON_NANO_MODEL in h["pricing_per_1m_usd"]
+        assert "bionemo_protein_design_model" not in h
 
     def test_token_factory_client_helper_returns_openai_client(self):
         tf = clients.token_factory()
@@ -63,9 +74,9 @@ class TestNebiusLlmAdapter:
         assert msgs[1] == {"role": "user", "content": "Analyze chr20 VCF"}
 
     def test_converts_function_call_and_response_roundtrip(self):
-        fc_part = types.Part.from_function_call(name="parse_vcf", args={"vcf_gcs_uri": "gs://b/x.vcf"})
+        fc_part = types.Part.from_function_call(name="parse_vcf", args={"vcf_gcs_uri": "s3://b/x.vcf"})
         fr_part = types.Part.from_function_response(
-            name="parse_vcf", response={"pass_variants": 24}
+            name="parse_vcf", response={"pass_variants": 72}
         )
         req = LlmRequest(
             model=config.NEMOTRON_NANO_MODEL,
@@ -106,39 +117,44 @@ class TestNebiusStorageAndMemoryBank:
         with tempfile.TemporaryDirectory() as tmp:
             monkeypatch.setattr(config, "DATA_DIR", tmp)
             monkeypatch.setattr(config, "HELIX_DATA_DIR", tmp)
-            clients.firestore.cache_clear()
+            clients.state_store.cache_clear()
             clients.storage.cache_clear()
 
             assert publish_registry() == 5
 
-            uri = f"gs://{config.DATA_BUCKET}/uploads/u-test/manifest.json"
+            uri = f"s3://{config.DATA_BUCKET}/uploads/u-test/manifest.json"
             raw_manifest = json.dumps(
                 {
                     "patient_name": "Jane Doe",
                     "date_of_birth": "01/01/1980",
                     "contact_email": "jane.doe@example.com",
+                    "nested": {"mrn": "MRN-998877", "full_name": "Jane Doe"},
                     "sample_id": "u-test",
                 }
             )
             write_gcs_text(uri, raw_manifest)
             assert "Jane Doe" in read_gcs_text(uri)
 
-            verdict = screen_with_model_armor(raw_manifest)
+            verdict = screen_manifest_text(raw_manifest)
             assert verdict["verdict"] == "clean"
-            assert verdict["engine"] == "intake_safety_screen"
+            assert verdict["engine"] == "regex_safe_harbor_v1"
 
             deid = deidentify_manifest(uri)
             assert deid["status"] == "scrubbed"
-            assert deid["engine"] == "hipaa_safe_harbor_scrubber"
+            assert deid["engine"] == "regex_safe_harbor_v1"
             assert "Jane Doe" not in deid["redacted_text"]
+            assert "MRN-998877" not in deid["redacted_text"]
             assert "[PERSON_NAME]" in deid["redacted_text"]
             assert "[DATE_OF_BIRTH]" in deid["redacted_text"]
             assert "[EMAIL_ADDRESS]" in deid["redacted_text"]
+            assert "[MEDICAL_RECORD_NUMBER]" in deid["redacted_text"]
             assert "[PERSON_NAME]" in read_gcs_text(deid["scrubbed_uri"])
 
-            # Verify double-escaped JSON strings are also scrubbed
-            escaped = r'{\"patient_name\": \"Jane Doe\", \"date_of_birth\": \"01/01/1980\"}'
-            assert "Jane Doe" not in scrub_pii(escaped)["redacted_text"]
+            # Verify double-escaped JSON strings and free-text MRNs are also scrubbed
+            escaped = r'{\"patient_name\": \"Jane Doe\", \"date_of_birth\": \"01/01/1980\", \"note\": \"MRN: 123456\"}'
+            scrubbed_esc = scrub_pii(escaped)["redacted_text"]
+            assert "Jane Doe" not in scrubbed_esc
+            assert "123456" not in scrubbed_esc
 
             fp = fingerprint_gcs_object(uri)
             assert fp["size_bytes"] == len(raw_manifest.encode())
@@ -155,14 +171,15 @@ class TestNebiusStorageAndMemoryBank:
             assert state["stage"] == "TWIN_SAVED"
 
             # Stage a VCF for u-test so save_digital_twin deterministically seals genome_vault
-            vcf_uri = f"gs://{config.DATA_BUCKET}/uploads/u-test/panel.vcf"
+            vcf_uri = f"s3://{config.DATA_BUCKET}/uploads/u-test/panel.vcf"
             write_gcs_text(vcf_uri, _DEMO_NA12878_VCF)
             res = save_digital_twin("u-test", json.dumps({"variants_called": 24, "genome_commitment_root": "wrong-sha"}))
             assert "SUCCESS" in res
-            saved_twin = clients.firestore().collection(config.COLL_TWINS).document("u-test").get().to_dict()["twin"]
-            vault_doc = clients.firestore().collection(config.COLL_VAULT).document("u-test").get().to_dict()
+            saved_twin = clients.state_store().collection(config.COLL_TWINS).document("u-test").get().to_dict()["twin"]
+            vault_doc = clients.state_store().collection(config.COLL_VAULT).document("u-test").get().to_dict()
             assert vault_doc["root"] == saved_twin["genome_commitment_root"]
             assert saved_twin["genome_commitment_root"] != "wrong-sha"
+            assert saved_twin["variants_called"] == 72
             assert len(vault_doc["records"]) == 25
 
             anno = annotate_with_1000genomes("chr20", 10000000, 10010000)
@@ -171,6 +188,19 @@ class TestNebiusStorageAndMemoryBank:
             assert "superpopulations" in first_rec
             for pop in ("AFR", "AMR", "EAS", "EUR", "SAS"):
                 assert pop in first_rec["superpopulations"]
+
+    def test_path_traversal_rejected_in_storage_and_blob(self, monkeypatch):
+        with tempfile.TemporaryDirectory() as tmp:
+            monkeypatch.setattr(config, "DATA_DIR", tmp)
+            monkeypatch.setattr(config, "HELIX_DATA_DIR", tmp)
+            clients.storage.cache_clear()
+
+            with pytest.raises(ValueError):
+                write_gcs_text(f"s3://{config.DATA_BUCKET}/uploads/../secret.txt", "bad")
+            with pytest.raises(ValueError):
+                clients.storage().bucket(config.DATA_BUCKET).blob("../../etc/passwd")
+            with pytest.raises(ValueError):
+                clients.storage().bucket("../escape")
 
     def test_s3_event_notification_parsed(self):
         s3_event = {

@@ -6,13 +6,13 @@ Analysis pipeline (fires on VCF arrival): analyst -> pharmacist -> steward
 Routing between pipelines is deterministic (storage events), execution
 within each stage is agentic. Three-tier NVIDIA Nemotron 3 model routing on
 Nebius Token Factory (`https://api.tokenfactory.nebius.com/v1/`):
-  - Tier 1 (Fast / High-Throughput): `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`
+  - Tier 1 (High-Throughput Gatekeeper): `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B`
     powers `helixstreet_intake` (compliance gatekeeper) and `helixstreet_variant_caller`
     (asynchronous Nebius Serverless GPU Job dispatch).
   - Tier 2 (Structured Synthesis): `nvidia/nemotron-3-super-120b-a12b`
     powers `helixstreet_steward` (Digital Twin assembly and Memory Bank persistence).
   - Tier 3 (Deep Scientific & Clinical Reasoning): `nvidia/Nemotron-3-Ultra-550b-a55b`
-    powers `helixstreet_analyst` (VCF + 1000 Genomes super-population genetics + Merkle ZKP)
+    powers `helixstreet_analyst` (VCF + 1000 Genomes super-population genetics + minimal-disclosure Merkle proofs)
     and `helixstreet_pharmacist` (CPIC star-allele, Tavily clinical trials & Europe PMC reasoning).
 
 The async gap between the two pipelines — while DeepVariant / Clara Parabricks
@@ -23,17 +23,16 @@ from google.adk.agents import Agent, SequentialAgent
 from . import config
 from .nebius_llm import NebiusTokenFactoryLlm
 from .tools.audit import record_audit_event
-from .tools.compliance import deidentify_manifest, screen_manifest_safety, scrub_pii
-from .tools.gcs import fingerprint_gcs_object, read_gcs_text, write_gcs_text
+from .tools.compliance import deidentify_manifest
 from .tools.genomics import annotate_with_1000genomes, parse_vcf
 from .tools.memory import get_pipeline_state, save_digital_twin, update_pipeline_state
 from .tools.pharmacogenomics import (
-    design_rfd4_proteina_rescue,
     fetch_cpic_diplotype_details,
     match_pgx_variants,
     search_clinical_trials_tavily,
     search_literature,
 )
+from .tools.storage import fingerprint_gcs_object
 from .tools.variant_calling import (
     get_batch_job_status,
     submit_deepvariant_job,
@@ -78,10 +77,6 @@ Finish with a one-paragraph handoff summary for the variant-calling agent,
 repeating the user_id and the BAM URI exactly as given to you.""",
     tools=[
         deidentify_manifest,
-        read_gcs_text,
-        screen_manifest_safety,
-        scrub_pii,
-        write_gcs_text,
         fingerprint_gcs_object,
         record_audit_event,
     ],
@@ -123,14 +118,15 @@ analyst_agent = Agent(
 A DeepVariant result VCF has landed; its URI and the user_id will be in
 the event description. Do the following:
 1. Check get_pipeline_state for the user to recover context from the Memory Bank.
-2. Parse the VCF with parse_vcf.
+2. Parse the VCF with parse_vcf. Note both variants_total and variants_pass across the full file.
 3. Call annotate_with_1000genomes once: pick the chromosome carrying the most
    variants and use the min and max positions of the variants on it.
-4. Call commit_genome with the user_id and the same VCF URI to seal a
+4. Call commit_genome ONCE with the user_id and the same VCF URI to seal a
    per-variant Merkle commitment; note the returned commitment_root. This lets the
-   genome later prove single facts about itself without being revealed.
-5. Record an audit event (action ANALYSIS_COMPLETE) with variant counts and the commitment_root.
-Produce a structured analysis: number of calls, notable variants (high quality,
+   genome later prove single facts about itself via minimal-disclosure Merkle proofs.
+   (commit_genome automatically records COMMITMENT_ANCHORED in the ledger.)
+5. Record an audit event (action ANALYSIS_COMPLETE) with variants_pass and the commitment_root.
+Produce a structured analysis: total and PASS variant calls (variants_pass), notable variants (high quality,
 non-reference genotypes, dbSNP rsIDs), how they compare to 1000 Genomes Phase 3
 global and super-population allele frequencies (AFR, AMR, EAS, EUR, SAS),
 and the exact Merkle commitment_root returned by commit_genome. Be precise and
@@ -174,7 +170,6 @@ changes; always defer to clinicians.""",
         fetch_cpic_diplotype_details,
         search_literature,
         search_clinical_trials_tavily,
-        design_rfd4_proteina_rescue,
         record_audit_event,
     ],
 )
@@ -188,7 +183,8 @@ steward_agent = Agent(
     ),
     instruction="""You are the Data Steward agent of the Helixstreet fleet, powered by NVIDIA Nemotron 3 Super on Nebius Token Factory.
 Take the analyst's and pharmacist's findings from the conversation above and:
-1. Build a JSON digital-twin summary with keys: variants_called (int),
+1. Build a JSON digital-twin summary with keys:
+   variants_called (int, MUST be the full-file variants_pass count reported by parse_vcf),
    notable_variants (list), population_context (string including 1000G Phase 3
    AFR/AMR/EAS/EUR/SAS stratification),
    medication_insights (list of the pharmacist's matches with gene, phenotype,

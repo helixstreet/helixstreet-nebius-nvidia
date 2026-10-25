@@ -63,7 +63,7 @@ AGENT_CARDS = [
         "capabilities": [
             "vcf-parsing",
             "1000-genomes-superpopulations",
-            "merkle-zkp-commitment",
+            "minimal-disclosure-merkle-commitment",
             "nemotron-3-ultra-reasoning",
         ],
         "required_roles": ["nebius.storage.objectViewer", "nebius.tokenfactory.inferenceUser"],
@@ -111,7 +111,7 @@ AGENT_CARDS = [
 
 
 def publish_registry() -> int:
-    db = clients.firestore()
+    db = clients.state_store()
     now = datetime.datetime.now(datetime.timezone.utc).isoformat()
     for card in AGENT_CARDS:
         db.collection(config.COLL_REGISTRY).document(card["name"]).set(

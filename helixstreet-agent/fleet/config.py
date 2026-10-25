@@ -17,6 +17,7 @@ load_dotenv()
 
 # Nebius AI Cloud project & region
 PROJECT_ID = os.getenv("NEBIUS_PROJECT_ID", "helixstreet-nebius")
+NEBIUS_PROJECT_ID = PROJECT_ID
 NEBIUS_TENANT_ID = os.getenv("NEBIUS_TENANT_ID", "")
 NEBIUS_REGION = os.getenv("NEBIUS_REGION", "eu-north1")
 NEBIUS_SUBNET_ID = os.getenv("NEBIUS_SUBNET_ID", "")
@@ -44,47 +45,30 @@ NEMOTRON_ULTRA_MODEL = os.getenv(
 
 # Official Nebius Token Factory catalog pricing (USD per 1M input / output tokens)
 NEBIUS_MODEL_PRICING = {
-    NEMOTRON_NANO_MODEL: {"tier": "Tier 1 — Fast / High-Throughput", "input_per_1m": 0.06, "output_per_1m": 0.24},
+    NEMOTRON_NANO_MODEL: {"tier": "Tier 1 — High-Throughput Gatekeeper", "input_per_1m": 0.06, "output_per_1m": 0.24},
     NEMOTRON_SUPER_MODEL: {"tier": "Tier 2 — Structured Synthesis", "input_per_1m": 0.30, "output_per_1m": 0.90},
     NEMOTRON_ULTRA_MODEL: {"tier": "Tier 3 — Deep Clinical Reasoning", "input_per_1m": 1.00, "output_per_1m": 3.00},
 }
 
-# 2026 Nebius Token Factory & Nebius AI Cloud Enterprise Capabilities
-NEBIUS_ENDPOINT_FLAVORS = {
-    "fast": {
-        "flavor": "Fast",
-        "sla_target": "< 800 ms point-of-care /ask & A2A ICU negotiation",
-        "custom_speculator_id": "speculator-helix-ed25519-json-v1",
-        "speculative_speedup_x": 2.4,
-    },
-    "base": {
-        "flavor": "Base",
-        "sla_target": "Standard real-time Digital Twin synthesis ($0.0168/twin, -40.2% vs All-Ultra)",
-        "cost_per_twin_usd": 0.0168,
-    },
-    "batch": {
-        "flavor": "Batch Inference (-50% Discount)",
-        "sla_target": "24h async hospital biobank screening & nightly CPIC guideline re-evaluation",
-        "discount_pct": 50.0,
-        "cost_per_twin_usd": 0.0084,
-    },
+AGENT_MODELS = {
+    "helixstreet_intake": NEMOTRON_NANO_MODEL,
+    "helixstreet_variant_caller": NEMOTRON_NANO_MODEL,
+    "helixstreet_analyst": NEMOTRON_ULTRA_MODEL,
+    "helixstreet_pharmacist": NEMOTRON_ULTRA_MODEL,
+    "helixstreet_steward": NEMOTRON_SUPER_MODEL,
 }
-NEBIUS_CUSTOM_SPECULATOR_ID = os.getenv(
-    "NEBIUS_CUSTOM_SPECULATOR_ID", "speculator-helix-ed25519-json-v1"
-)
-NEBIUS_DATA_LAB_PIPELINE = os.getenv(
-    "NEBIUS_DATA_LAB_PIPELINE", "helixstreet-rwe-clinical-sft-v1"
-)
-NEBIUS_SERVERLESS_LORA_BASE = os.getenv(
-    "NEBIUS_SERVERLESS_LORA_BASE", NEMOTRON_SUPER_MODEL
-)
+
+# Verified Nebius AI Cloud resource identifiers
 NEBIUS_SECRETSTASH_ID = os.getenv(
     "NEBIUS_SECRETSTASH_ID", "mbsec-e00zxbcp465mhbrhwf"
 )
-NEBIUS_STORAGE_CLASS = os.getenv("NEBIUS_STORAGE_CLASS", "ENHANCED")
 NEBIUS_BUCKET_RESOURCE_ID = os.getenv(
     "NEBIUS_BUCKET_RESOURCE_ID", "storagebucket-e008779569894118469733"
 )
+
+# API Auth & Daily LLM Quota for public judging
+HELIX_API_TOKEN = os.getenv("HELIX_API_TOKEN", "helixstreet-demo-token-2026")
+HELIX_DAILY_LLM_CALLS = int(os.getenv("HELIX_DAILY_LLM_CALLS", "300"))
 
 # Backwards-compatible aliases used by existing modules/tests
 REASONING_MODEL = os.getenv("REASONING_MODEL", NEMOTRON_ULTRA_MODEL)
@@ -107,8 +91,8 @@ NEBIUS_S3_SECRET_ACCESS_KEY = os.getenv(
     "NEBIUS_S3_SECRET_ACCESS_KEY", os.getenv("AWS_SECRET_ACCESS_KEY", "")
 )
 
-# Fleet webhook URL for event-driven triggers
-FLEET_URL = os.getenv("FLEET_URL", "http://127.0.0.1:8080")
+# Fleet webhook URL for event-driven triggers (matches root Dockerfile port 8000)
+FLEET_URL = os.getenv("FLEET_URL", "http://127.0.0.1:8000")
 
 # Variant Calling — NVIDIA Clara Parabricks on Nebius Serverless AI GPU Jobs
 VARIANT_CALLER_ENGINE = os.getenv("VARIANT_CALLER_ENGINE", "parabricks")
@@ -131,13 +115,6 @@ REFERENCE_FASTA = os.getenv(
 )
 LOCATION = os.getenv("BATCH_LOCATION", NEBIUS_REGION)
 
-# Intake safety screening configuration
-NEMOTRON_GUARDRAILS_ENABLED = os.getenv("NEMOTRON_GUARDRAILS_ENABLED", "true").lower() in (
-    "1",
-    "true",
-    "yes",
-)
-
 APP_NAME = "helixstreet-fleet"
 
 # State / Memory Bank collections
@@ -152,3 +129,7 @@ COLL_RECEIPTS = "consent_receipts"
 COLL_ATTESTATIONS = "signed_attestations"
 COLL_ALERTS = "twin_alerts"
 COLL_RWE = "rwe_outcomes"
+COLL_QUOTA = "llm_quota"
+COLL_BENCHMARKS = "benchmarks"
+COLL_TAVILY_CACHE = "tavily_extract_cache"
+COLL_ENCLAVE_KEYS = "enclave_keys"

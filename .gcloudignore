@@ -1,0 +1,27 @@
+# Files excluded from `gcloud run deploy --source` uploads (Cloud Build context).
+# seed_data/ IS uploaded (Memory Bank seed + bucket mirror); the Ed25519 seed file is NOT —
+# the signing key is injected as HELIX_ENCLAVE_ED25519_SEED_HEX at deploy time.
+.git
+.gitignore
+.gcloudignore
+**/.venv
+**/venv
+**/__pycache__
+**/.pytest_cache
+*.pyc
+.DS_Store
+.idea
+.vscode
+.agents
+.claude
+docs/*.mp3
+docs/*.mp4
+*.mp4
+*.wav
+*.seed
+.env
+.env.*
+credentials*
+*.key
+*.pem
+token.txt

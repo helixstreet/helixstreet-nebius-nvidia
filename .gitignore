@@ -74,3 +74,6 @@ docs/blog-post.md
 *.pem
 credentials*
 token.txt
+
+# Ed25519 enclave signing seed (never commit; set HELIX_ENCLAVE_ED25519_SEED_HEX in deployments)
+*.seed

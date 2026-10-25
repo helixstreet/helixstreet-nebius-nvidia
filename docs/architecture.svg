@@ -49,7 +49,7 @@
   <rect x="28" y="20" width="1804" height="68" rx="12" fill="#131c33" stroke="#334155" stroke-width="1.5"/>
   <rect x="44" y="34" width="10" height="40" rx="4" fill="#76B900"/>
   <text x="68" y="51" fill="#f8fafc" font-size="21" font-weight="700">Helixstreet — The Consent-Native Pharmacogenomics Layer (Nebius x NVIDIA Edition)</text>
-  <text x="68" y="73" fill="#94a3b8" font-size="13" font-weight="500">Ed25519 Enclave Attestations (0B Egress) · 3-Stage NVIDIA Stack: Clara Parabricks (6.05s L40S) + Nemotron 3 + BioNeMo RFD4-Proteina</text>
+  <text x="68" y="73" fill="#94a3b8" font-size="13" font-weight="500">Ed25519 Enclave Attestations (0B Raw Genome Released to Requesters) · NVIDIA Clara Parabricks (6.05s L40S) + 3-Tier Nemotron 3 + Tavily Search/Extract</text>
 
   <!-- Legend Pills in Header -->
   <rect x="1250" y="36" width="180" height="34" rx="17" fill="#143325" stroke="#76B900" stroke-width="1.5"/>
@@ -71,30 +71,30 @@
   <!-- Streamlit Box -->
   <rect x="46" y="210" width="204" height="225" rx="10" fill="#1e293b" stroke="#38bdf8" stroke-width="1.8"/>
   <text x="148" y="238" fill="#f8fafc" font-size="14.5" font-weight="700" text-anchor="middle">Command Center UI</text>
-  <text x="148" y="257" fill="#38bdf8" font-size="11.5" font-weight="600" text-anchor="middle">7 Interactive Live Views</text>
+  <text x="148" y="257" fill="#38bdf8" font-size="11.5" font-weight="600" text-anchor="middle">7 Interactive Live Tabs</text>
   <line x1="60" y1="268" x2="236" y2="268" stroke="#334155" stroke-width="1"/>
-  <text x="58" y="288" fill="#a3e635" font-size="11.5" font-weight="700">• Living Twin &amp; Consent Gate</text>
-  <text x="58" y="308" fill="#cbd5e1" font-size="11.5">• Ed25519 Signed Attestations</text>
-  <text x="58" y="328" fill="#cbd5e1" font-size="11.5">• Genomic Digital Twins &amp; 3D PDB</text>
-  <text x="58" y="348" fill="#cbd5e1" font-size="11.5">• Pipeline Runs &amp; Cost Timeline</text>
-  <text x="58" y="368" fill="#cbd5e1" font-size="11.5">• 1-of-25 Merkle &amp; IBS0 Proofs</text>
-  <text x="58" y="388" fill="#cbd5e1" font-size="11.5">• Fleet Registry &amp; 3-Tier Bench</text>
-  <text x="58" y="408" fill="#cbd5e1" font-size="11.5">• Hash-Chained Audit Ledger</text>
+  <text x="58" y="288" fill="#cbd5e1" font-size="11.5">1 · Pipeline runs &amp; Economics</text>
+  <text x="58" y="308" fill="#cbd5e1" font-size="11.5">2 · Digital twins &amp; 3D PDB</text>
+  <text x="58" y="328" fill="#cbd5e1" font-size="11.5">3 · Private proofs (1-of-N)</text>
+  <text x="58" y="348" fill="#a3e635" font-size="11.5" font-weight="700">4 · Living Twin &amp; Consent Gate</text>
+  <text x="58" y="368" fill="#cbd5e1" font-size="11.5">5 · Fleet registry &amp; Bench</text>
+  <text x="58" y="388" fill="#cbd5e1" font-size="11.5">6 · Audit ledger (SHA-256)</text>
+  <text x="58" y="408" fill="#cbd5e1" font-size="11.5">7 · About &amp; Provenance</text>
 
   <!-- Enclave & Living Twin API Box -->
   <rect x="46" y="455" width="204" height="245" rx="10" fill="#172033" stroke="#76B900" stroke-width="1.4"/>
   <text x="148" y="478" fill="#a3e635" font-size="12.5" font-weight="700" text-anchor="middle">Consent-Native Enclave API</text>
   <text x="56" y="499" fill="#e2e8f0" font-size="10.8" font-family="monospace">POST /ask (Ed25519 signed)</text>
-  <text x="56" y="517" fill="#fca5a5" font-size="10.8" font-family="monospace">POST /consents/revoke</text>
-  <text x="56" y="535" fill="#7dd3fc" font-size="10.8" font-family="monospace">POST /fhir/MedicationRequest</text>
-  <text x="56" y="553" fill="#7dd3fc" font-size="10.8" font-family="monospace">POST /guidelines/update</text>
-  <text x="56" y="571" fill="#a3e635" font-size="10.8" font-family="monospace">POST /a2a/negotiate (A2A)</text>
-  <text x="56" y="589" fill="#a3e635" font-size="10.8" font-family="monospace">POST /bionemo/rfd4-design</text>
-  <text x="56" y="607" fill="#fde047" font-size="10.8" font-family="monospace">GET  /wallet/vc/{id} (EHDS)</text>
-  <text x="56" y="625" fill="#fde047" font-size="10.8" font-family="monospace">GET  /twin/timeline/{id}</text>
-  <text x="56" y="643" fill="#d8b4fe" font-size="10.8" font-family="monospace">POST /rwe/outcome</text>
-  <text x="56" y="661" fill="#d8b4fe" font-size="10.8" font-family="monospace">POST /federated/cohort-query</text>
-  <text x="56" y="685" fill="#76B900" font-size="11" font-weight="700">→ 0 Bytes Raw Genome Egress</text>
+  <text x="56" y="517" fill="#e2e8f0" font-size="10.8" font-family="monospace">POST /verify (RFC-8032)</text>
+  <text x="56" y="535" fill="#fca5a5" font-size="10.8" font-family="monospace">POST /consents/revoke</text>
+  <text x="56" y="553" fill="#7dd3fc" font-size="10.8" font-family="monospace">POST /fhir/MedicationRequest</text>
+  <text x="56" y="571" fill="#7dd3fc" font-size="10.8" font-family="monospace">POST /guidelines/update</text>
+  <text x="56" y="589" fill="#fde047" font-size="10.8" font-family="monospace">GET  /wallet/vc/{id} (EHDS)</text>
+  <text x="56" y="607" fill="#fde047" font-size="10.8" font-family="monospace">GET  /nebius/platform-usage</text>
+  <text x="56" y="625" fill="#d8b4fe" font-size="10.8" font-family="monospace">POST /rwe/outcome</text>
+  <text x="56" y="643" fill="#94a3b8" font-size="10.8" font-family="monospace">POST /a2a/negotiate (sim)</text>
+  <text x="56" y="661" fill="#94a3b8" font-size="10.8" font-family="monospace">POST /federated/* (sim)</text>
+  <text x="56" y="685" fill="#76B900" font-size="11" font-weight="700">→ 0B Raw Genome to Requesters</text>
 
   <!-- ========================================================================= -->
   <!-- COLUMN 2: NEBIUS OBJECT STORAGE & EVENT WEBHOOK -->
@@ -132,7 +132,7 @@
   <polygon points="655,390 730,455 655,520 580,455" fill="#1e293b" stroke="#38bdf8" stroke-width="2"/>
   <text x="655" y="446" fill="#f8fafc" font-size="12.5" font-weight="700" text-anchor="middle">Deterministic</text>
   <text x="655" y="464" fill="#38bdf8" font-size="12" font-weight="600" text-anchor="middle">Event Router</text>
-  <text x="655" y="481" fill="#94a3b8" font-size="10.5" font-family="monospace" text-anchor="middle">router.py</text>
+  <text x="655" y="481" fill="#94a3b8" font-size="10.5" font-family="monospace" text-anchor="middle">main.py</text>
 
   <!-- INGEST PIPELINE SUB-BOX -->
   <rect x="765" y="176" width="680" height="190" rx="10" fill="#0d1526" stroke="#22c55e" stroke-width="1.2" stroke-dasharray="5,4"/>
@@ -177,9 +177,9 @@
   <text x="1274" y="454" fill="#f8fafc" font-size="14.5" font-weight="700" text-anchor="middle">4. helixstreet_pharmacist</text>
   <rect x="1147" y="463" width="255" height="22" rx="6" fill="#180d2c" stroke="#c084fc" stroke-width="1"/>
   <text x="1274" y="478" fill="#e9d5ff" font-size="11" font-family="monospace" font-weight="700" text-anchor="middle">nvidia/Nemotron-3-Ultra-550b-a55b</text>
-  <text x="1138" y="504" fill="#f3e8ff" font-size="12">• CPIC + DPWG + PharmGKB 312-node KG</text>
+  <text x="1138" y="504" fill="#f3e8ff" font-size="12">• CPIC + DPWG (6 drug-gene pairs · 9 rules)</text>
   <text x="1138" y="524" fill="#f3e8ff" font-size="12">• Live Europe PMC + Tavily NCT search</text>
-  <text x="1138" y="544" fill="#a3e635" font-size="12" font-weight="600">• BioNeMo RFD4-Proteina 3D rescue</text>
+  <text x="1138" y="544" fill="#a3e635" font-size="12" font-weight="600">• Verbatim passage (Tavily Extract)</text>
 
   <!-- Agent 5: helixstreet_steward -->
   <rect x="952" y="592" width="340" height="114" rx="10" fill="url(#superGrad)" stroke="#38bdf8" stroke-width="2"/>

@@ -18,8 +18,28 @@ def commit_genome(user_id: str, vcf_gcs_uri: str) -> dict:
 
     Args:
         user_id: The pipeline user/sample identifier.
-        vcf_gcs_uri: gs:// URI of the VCF whose genotypes are committed.
+        vcf_gcs_uri: s3:// or gs:// URI of the VCF whose genotypes are committed.
     """
+    vault_ref = clients.state_store().collection(config.COLL_VAULT).document(user_id)
+    existing = vault_ref.get()
+    if existing.exists:
+        ed = existing.to_dict() or {}
+        if ed.get("root") and ed.get("records"):
+            if not ed.get("anchored_in_ledger"):
+                vault_ref.set({"anchored_in_ledger": True}, merge=True)
+                record_audit_event(
+                    "helixstreet_analyst",
+                    "COMMITMENT_ANCHORED",
+                    f"Sealed per-variant genome commitment for {user_id} over {len(ed['records'])} "
+                    f"markers; Merkle root {ed['root']} anchored. Genotypes remain in the vault.",
+                )
+            return {
+                "commitment_root": ed["root"],
+                "sealed_markers": len(ed["records"]),
+                "note": "Per-variant Merkle root anchored; genotypes sealed. Enables "
+                "minimal-disclosure proofs of single genotypes without revealing the genome.",
+            }
+
     parsed = parse_vcf(vcf_gcs_uri)
     variants = parsed.get("variants", [])
     records = []
@@ -36,8 +56,13 @@ def commit_genome(user_id: str, vcf_gcs_uri: str) -> dict:
         return {"status": "skipped", "reason": "no genotyped variants to commit"}
 
     root, _ = zk.build_commitment(records)
-    clients.firestore().collection(config.COLL_VAULT).document(user_id).set(
-        {"root": root, "records": records, "panel": [r["key"] for r in records]}
+    vault_ref.set(
+        {
+            "root": root,
+            "records": records,
+            "panel": [r["key"] for r in records],
+            "anchored_in_ledger": True,
+        }
     )
     record_audit_event(
         "helixstreet_analyst",

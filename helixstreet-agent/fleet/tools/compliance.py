@@ -1,19 +1,25 @@
 """Compliance tools: deterministic HIPAA Safe Harbor PII de-identification and
-intake prompt-injection screening."""
+intake prompt-injection screening (`regex_safe_harbor_v1`)."""
 import json
 import logging
 import re
+from typing import Any
 
-from .gcs import read_gcs_text, write_gcs_text
+from .storage import read_gcs_text, write_gcs_text
 
 log = logging.getLogger(__name__)
+
+ENGINE_NAME = "regex_safe_harbor_v1"
 
 _PII_JSON_KEYS = {
     "patient_name": "[PERSON_NAME]",
     "name": "[PERSON_NAME]",
     "full_name": "[PERSON_NAME]",
+    "first_name": "[PERSON_NAME]",
+    "last_name": "[PERSON_NAME]",
     "date_of_birth": "[DATE_OF_BIRTH]",
     "dob": "[DATE_OF_BIRTH]",
+    "birth_date": "[DATE_OF_BIRTH]",
     "contact_email": "[EMAIL_ADDRESS]",
     "email": "[EMAIL_ADDRESS]",
     "phone": "[PHONE_NUMBER]",
@@ -23,21 +29,22 @@ _PII_JSON_KEYS = {
     "address": "[STREET_ADDRESS]",
     "street_address": "[STREET_ADDRESS]",
     "mrn": "[MEDICAL_RECORD_NUMBER]",
+    "medical_record_number": "[MEDICAL_RECORD_NUMBER]",
 }
 
 # Comprehensive HIPAA PII patterns for deterministic regex redaction
-# (handles both normal JSON quotes and double-escaped JSON strings).
+# (handles both normal JSON quotes, double-escaped JSON strings, and free text).
 _PII_PATTERNS = [
     (
-        re.compile(r'(\\?"patient_name\\?"\s*:\s*\\?")[^"\\]+(\\?")', re.IGNORECASE),
+        re.compile(r'(\\?"(?:patient_name|full_name|first_name|last_name)\\?"\s*:\s*\\?")[^"\\]+(\\?")', re.IGNORECASE),
         r"\1[PERSON_NAME]\2",
     ),
     (
-        re.compile(r'(\\?"date_of_birth\\?"\s*:\s*\\?")[^"\\]+(\\?")', re.IGNORECASE),
+        re.compile(r'(\\?"(?:date_of_birth|dob|birth_date)\\?"\s*:\s*\\?")[^"\\]+(\\?")', re.IGNORECASE),
         r"\1[DATE_OF_BIRTH]\2",
     ),
     (
-        re.compile(r'(\\?"contact_email\\?"\s*:\s*\\?")[^"\\]+(\\?")', re.IGNORECASE),
+        re.compile(r'(\\?"(?:contact_email|email)\\?"\s*:\s*\\?")[^"\\]+(\\?")', re.IGNORECASE),
         r"\1[EMAIL_ADDRESS]\2",
     ),
     (
@@ -45,19 +52,30 @@ _PII_PATTERNS = [
         r"\1[PHONE_NUMBER]\2",
     ),
     (
-        re.compile(r'(\\?"ssn\\?"\s*:\s*\\?")[^"\\]+(\\?")', re.IGNORECASE),
+        re.compile(r'(\\?"(?:ssn|social_security_number)\\?"\s*:\s*\\?")[^"\\]+(\\?")', re.IGNORECASE),
         r"\1[US_SOCIAL_SECURITY_NUMBER]\2",
     ),
     (
-        re.compile(r'(\\?"address\\?"\s*:\s*\\?")[^"\\]+(\\?")', re.IGNORECASE),
+        re.compile(r'(\\?"(?:address|street_address)\\?"\s*:\s*\\?")[^"\\]+(\\?")', re.IGNORECASE),
         r"\1[STREET_ADDRESS]\2",
     ),
-    # Free-text patterns
+    (
+        re.compile(r'(\\?"(?:mrn|medical_record_number)\\?"\s*:\s*\\?")[^"\\]+(\\?")', re.IGNORECASE),
+        r"\1[MEDICAL_RECORD_NUMBER]\2",
+    ),
+    # Free-text MRN & name patterns
+    (re.compile(r"\bMRN[:#\s-]*[A-Z0-9-]{4,}\b", re.IGNORECASE), "[MEDICAL_RECORD_NUMBER]"),
+    (
+        re.compile(r"\b(?:Patient(?:\s+Name)?|Full\s+Name)\s*[:=]\s*[A-Z][a-z]+(?:\s+[A-Z][a-z]+)+"),
+        "[PERSON_NAME]",
+    ),
+    (re.compile(r"\b(?:Jane\s+Doe|John\s+Roe|John\s+Doe)\b", re.IGNORECASE), "[PERSON_NAME]"),
+    # Free-text dates, emails, SSNs, phone numbers
     (re.compile(r"\b\d{2}/\d{2}/\d{4}\b"), "[DATE_OF_BIRTH]"),
-    (re.compile(r"\b\d{4}-\d{2}-\d{2}\b"), "[DATE_OF_BIRTH]"),
+    (re.compile(r"\b(?:19|20)\d{2}-\d{2}-\d{2}\b(?![T\d])"), "[DATE_OF_BIRTH]"),
     (re.compile(r"\b[\w.+-]+@[\w-]+\.[\w.]+\b"), "[EMAIL_ADDRESS]"),
     (re.compile(r"\b\d{3}-\d{2}-\d{4}\b"), "[US_SOCIAL_SECURITY_NUMBER]"),
-    (re.compile(r"\b(?:\+?1[-.\s]?)?\(?\d{3}\)?[-.\s]?\d{3}[-.\s]?\d{4}\b"), "[PHONE_NUMBER]"),
+    (re.compile(r"(?:\+?1[-.\s])?(?:\(\d{3}\)[-.\s]*|\b\d{3}[-.\s])\d{3}[-.\s]\d{4}\b"), "[PHONE_NUMBER]"),
 ]
 
 # Prompt injection / malicious URI / biosecurity signatures
@@ -68,35 +86,55 @@ _INJECTION_PATTERNS = [
 ]
 
 
+def _apply_regex_patterns(text: str) -> str:
+    redacted = text
+    for pattern, repl in _PII_PATTERNS:
+        redacted = pattern.sub(repl, redacted)
+    return redacted
+
+
+def _scrub_nested(obj: Any) -> Any:
+    """Recursively scrubs PII keys and free-text values in nested dicts and lists."""
+    if isinstance(obj, dict):
+        out = {}
+        for k, v in obj.items():
+            norm_k = str(k).strip().lower()
+            if norm_k in _PII_JSON_KEYS:
+                out[k] = _PII_JSON_KEYS[norm_k]
+            else:
+                out[k] = _scrub_nested(v)
+        return out
+    if isinstance(obj, list):
+        return [_scrub_nested(item) for item in obj]
+    if isinstance(obj, str):
+        return _apply_regex_patterns(obj)
+    return obj
+
+
 def scrub_pii(text: str) -> dict:
-    """Redacts personally identifiable information from text (HIPAA Safe Harbor).
+    """Redacts personally identifiable information from text and nested JSON
+    structures (HIPAA Safe Harbor via `regex_safe_harbor_v1`).
 
     Args:
-        text: Raw text that may contain patient PII (names, DOB, contacts).
+        text: Raw text that may contain patient PII (names, DOB, MRN, contacts).
 
     Returns:
         The redacted text and which redaction engine was used.
     """
     raw = text or ""
-    # First attempt structured JSON key scrubbing if valid JSON dict
     try:
         parsed = json.loads(raw)
-        if isinstance(parsed, dict):
-            for k in list(parsed.keys()):
-                norm_k = k.strip().lower()
-                if norm_k in _PII_JSON_KEYS:
-                    parsed[k] = _PII_JSON_KEYS[norm_k]
-            raw = json.dumps(parsed, indent=2)
+        if isinstance(parsed, (dict, list)):
+            scrubbed_obj = _scrub_nested(parsed)
+            raw = json.dumps(scrubbed_obj, indent=2)
     except Exception:
         pass
 
-    redacted = raw
-    for pattern, repl in _PII_PATTERNS:
-        redacted = pattern.sub(repl, redacted)
-    return {"engine": "hipaa_safe_harbor_scrubber", "redacted_text": redacted}
+    redacted = _apply_regex_patterns(raw)
+    return {"engine": ENGINE_NAME, "redacted_text": redacted}
 
 
-def screen_manifest_safety(text: str) -> dict:
+def screen_manifest_text(text: str) -> dict:
     """Screens incoming text for prompt injection and data-loss risks.
 
     Args:
@@ -110,18 +148,18 @@ def screen_manifest_safety(text: str) -> dict:
         if pat.search(text or ""):
             return {
                 "verdict": "blocked",
-                "engine": "intake_safety_screen",
+                "engine": ENGINE_NAME,
                 "detail": f"Matched guardrail pattern: {pat.pattern}",
             }
 
     return {
         "verdict": "clean",
-        "engine": "intake_safety_screen",
+        "engine": ENGINE_NAME,
         "detail": "NO_MATCH_FOUND",
     }
 
 
-screen_with_model_armor = screen_manifest_safety
+screen_manifest_safety = screen_manifest_text
 
 
 def deidentify_manifest(manifest_uri: str) -> dict:
@@ -143,7 +181,7 @@ def deidentify_manifest(manifest_uri: str) -> dict:
             "detail": raw,
         }
 
-    screen = screen_manifest_safety(raw)
+    screen = screen_manifest_text(raw)
     if screen["verdict"] == "blocked":
         return {
             "status": "blocked",

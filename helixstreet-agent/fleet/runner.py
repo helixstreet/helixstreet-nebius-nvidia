@@ -1,5 +1,7 @@
 """Runs an ADK pipeline for one event, logging every step (observability) and
-mirroring the reasoning trace + token/latency/cost telemetry into the Memory Bank."""
+mirroring the reasoning trace + token/latency/cost telemetry into the Memory Bank.
+All tool args, tool results, and message texts are passed through `scrub_pii`
+before `append_trace` so traces never carry raw PII."""
 import datetime
 import inspect
 import json
@@ -11,6 +13,7 @@ from google.adk.runners import Runner
 from google.adk.sessions import InMemorySessionService
 
 from . import config
+from .tools.compliance import scrub_pii
 from .tools.memory import append_trace
 
 log = logging.getLogger("helixstreet.runner")
@@ -88,12 +91,14 @@ async def run_pipeline(pipeline_agent, user_id: str, prompt: str) -> str:
         }
 
         for call in event.get_function_calls() or []:
+            raw_args = json.dumps(dict(call.args or {}), default=str)
+            clean_args = scrub_pii(raw_args)["redacted_text"][:500]
             entry = {
                 "t": _now(),
                 "agent": author,
                 "type": "tool_call",
                 "tool": call.name,
-                "args": json.dumps(dict(call.args or {}), default=str)[:500],
+                "args": clean_args,
                 **telemetry,
             }
             log.info(json.dumps({"pipeline": pipeline_agent.name, **entry}))
@@ -109,12 +114,14 @@ async def run_pipeline(pipeline_agent, user_id: str, prompt: str) -> str:
             }
 
         for resp in event.get_function_responses() or []:
+            raw_result = json.dumps(resp.response, default=str)
+            clean_result = scrub_pii(raw_result)["redacted_text"][:2400]
             entry = {
                 "t": _now(),
                 "agent": author,
                 "type": "tool_result",
                 "tool": resp.name,
-                "result": json.dumps(resp.response, default=str)[:2400],
+                "result": clean_result,
                 "model": model_ver,
                 "latency_ms": latency_ms,
             }
@@ -124,15 +131,16 @@ async def run_pipeline(pipeline_agent, user_id: str, prompt: str) -> str:
         if event.content and event.content.parts:
             text = "".join(p.text or "" for p in event.content.parts if getattr(p, "text", None))
             if text.strip():
+                clean_text = scrub_pii(text.strip())["redacted_text"][:1500]
                 entry = {
                     "t": _now(),
                     "agent": author,
                     "type": "message",
-                    "text": text.strip()[:1500],
+                    "text": clean_text,
                     **telemetry,
                 }
                 log.info(json.dumps({"pipeline": pipeline_agent.name, **entry}))
                 append_trace(user_id, entry)
-                final_text = text
+                final_text = clean_text
 
     return final_text

@@ -5,7 +5,7 @@ import io
 import logging
 
 from .. import clients
-from .gcs import _split
+from .storage import _split
 
 log = logging.getLogger(__name__)
 
@@ -249,8 +249,10 @@ def summarize_vcf_text(text: str, source: str) -> dict:
         "source": source,
         "total_records": total,
         "pass_variants": passed,
+        "variants_total": total,
+        "variants_pass": passed,
         "variants": variants,
-        "note": f"variant list capped at {MAX_VARIANTS_RETURNED}",
+        "note": f"detailed variant list capped at {MAX_VARIANTS_RETURNED}; variants_pass={passed} reflects full VCF",
     }
 
 
