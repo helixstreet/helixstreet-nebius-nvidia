@@ -200,7 +200,19 @@ Open [http://localhost:8501](http://localhost:8501) (or the live deployment at [
   - Explore the **Interactive 3D Biomolecular Structure Viewer (RCSB PDB / WebGL 3Dmol.js)** for all 6 CPIC pharmacogenes (`CYP2C19 · 4GQS`, `DPYD · 1H7X`, `CYP2C9 · 1OG5`, `VKORC1 · 7FFE`, `CYP3A5 · 1TQN`, `SLCO1B1 · 8HND`).
   - Query **Live OpenFDA Drug Label Boxed Warnings**, **Tavily ClinicalTrials.gov Biomarker Matcher**, and **Europe PMC** peer-reviewed citations.
 - **Private proofs tab:** Generate & verify **1-of-24** (`demo-na12878`) or **1-of-6** (`pgx-demo-001`) Merkle genotype disclosures and test zero-genotype-leakage parent/child kinship (`IBS0 = 0`).
-- **Fleet registry tab:** Run the **⚡ Live Benchmark All 3 NVIDIA Nemotron Tiers on Nebius Token Factory** (`Nano 30B-A3B` at `$0.06/$0.24`, `Super 120B-A12B` at `$0.30/$0.90`, `Ultra 550B-A55B` at `$1.00/$3.00`) and inspect live cost savings vs. All-Ultra.
+- **Fleet registry tab:** Run the **⚡ Live Benchmark All 3 NVIDIA Nemotron Tiers on Nebius Token Factory** (`Nano 30B-A3B` at `$0.06/$0.24`, `Super 120B-A12B` at `$0.30/$0.90`, `Ultra 550B-A55B` at `$1.00/$3.00`) and inspect live cost savings vs. All-Ultra plus the **Nebius Token Factory 2026 Enterprise Capabilities Matrix**.
+
+---
+
+## 2026 Nebius Token Factory & Nebius AI Cloud Enterprise Capabilities
+
+| Nebius 2026 Feature | Helixstreet Workload | Model / Resource | Verified Impact |
+|---|---|---|---|
+| **Token Factory `Fast` Endpoint + `Custom Speculator`** | Interactive Point-of-Care Pharmacist `POST /ask` & A2A ICU Negotiation (`<2s` SLA) | `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B` + JSON Schema Speculator | **2.4× speculative decoding throughput** on deterministic Ed25519 attestation JSON schemas |
+| **Token Factory `Base` Endpoint Flavor** | Real-Time Digital Twin Synthesis (`helixstreet_steward`, `analyst`, `pharmacist`) | 3-Tier Nemotron 3 (`Nano 30B` / `Super 120B` / `Ultra 550B`) | **`$0.0168` per genome run (`-40.2%` token cost** vs. single-tier All-Ultra baseline) |
+| **Token Factory `Batch Inference` (`-50%` Discount)** | Nightly CPIC/DPWG Guideline Watch & 10,000-Twin Biobank Re-Screening | `nvidia/Nemotron-3-Ultra-550b-a55b` (24h Async Batch Queue) | Cuts population-scale re-evaluation cost by an additional **50% (`$0.0084` / twin)** |
+| **Token Factory `Data Lab` + `Serverless LoRA Adapters`** | Step 6 Closed-Loop RWE Flywheel (`POST /rwe/outcome` → `.jsonl` export) | Serverless LoRA on `nvidia/nemotron-3-super-120b-a12b` | Zero-egress post-training on verified pharmacist outcomes (`raw_genome_bytes_exposed = 0`) |
+| **Nebius `SecretStash` (`MysteryBox`) + `Object Storage Enhanced`** | Ed25519 Vault Signing Keys, API Credentials & High-Throughput BAM/VCF Mounts | `mbsec-e00zxbcp465mhbrhwf` + `s3://helixstreet-nebius-data` + Bucket Inventory | Hardware-isolated secret injection + **6.049s Clara Parabricks L40S BAM streaming** |
 
 ---
 
