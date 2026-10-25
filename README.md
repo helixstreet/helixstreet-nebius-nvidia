@@ -218,7 +218,7 @@ cd helixstreet-ui
 ../.venv/bin/streamlit run dashboard.py --server.port 8080
 ```
 
-The fleet API is also reachable locally at [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs). On the public demo both services share one origin behind Caddy: the UI at [https://nebius.helixstreet.io](https://nebius.helixstreet.io), health + enclave keys at [`/healthz`](https://nebius.helixstreet.io/healthz), and the OpenAPI explorer at [`/api/docs`](https://nebius.helixstreet.io/api/docs).
+The fleet API is also reachable locally at [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs). On the public demo both services share one origin behind Caddy: the UI at [https://nebius.helixstreet.io](https://nebius.helixstreet.io), health + enclave keys at [`/api/healthz`](https://nebius.helixstreet.io/api/healthz), and the OpenAPI explorer at [`/api/docs`](https://nebius.helixstreet.io/api/docs).
 
 Open [http://localhost:8080](http://localhost:8080) (or the live deployment at [https://nebius.helixstreet.io](https://nebius.helixstreet.io)):
 - **`1 · Pipeline runs` tab:** Inspect **Telemetry-Derived 3-Tier Routing Economics**, the **HIPAA Safe Harbor PII Redaction Diff** (`manifest.json` vs `manifest.scrubbed.json`, synthetic demo PII), the **Per-Step Execution Timeline, Latency & Token Cost Breakdown**, and the **NVIDIA Clara Parabricks (`pbrun deepvariant`) Job Inspector**.
@@ -239,7 +239,7 @@ Open [http://localhost:8080](http://localhost:8080) (or the live deployment at [
 
 | Endpoint | Auth | What it does |
 |---|---|---|
-| `GET https://nebius.helixstreet.io/healthz` | none | Model tiers & catalog pricing, Parabricks execution mode, **current + retired enclave public keys** (`enclave_trusted_keys`), daily LLM quota |
+| `GET https://nebius.helixstreet.io/api/healthz` | none | Model tiers & catalog pricing, Parabricks execution mode, **current + retired enclave public keys** (`enclave_trusted_keys`), daily LLM quota |
 | `GET https://nebius.helixstreet.io/api/docs` | none | OpenAPI explorer for every fleet endpoint |
 | `POST https://nebius.helixstreet.io/api/ask` | none (daily quota) | Consent-gated, Ed25519-signed phenotype attestation; `"use_nemotron": true` calls **Nemotron 3 Super** live on Token Factory |
 | `POST https://nebius.helixstreet.io/api/verify` | none | Verifies a bundle against the trusted enclave keys (optionally pin `trusted_public_key_ed25519`) |
@@ -252,13 +252,13 @@ curl -s -X POST https://nebius.helixstreet.io/api/ask \
   -d '{"patient_id":"pgx-demo-001","requester":"demo-pharmacy-basel","purpose":"drug_safety_dispensing_check","drug":"clopidogrel","use_nemotron":true}' \
   > attestation.json
 
-# 2. Verify it offline against the public key(s) the fleet publishes at /healthz
-python scripts/verify_attestation.py attestation.json --healthz-url https://nebius.helixstreet.io/healthz
+# 2. Verify it offline against the public key(s) the fleet publishes at /api/healthz
+python scripts/verify_attestation.py attestation.json --healthz-url https://nebius.helixstreet.io/api/healthz
 
 # 3. Change one character inside "attestation" in attestation.json and run step 2 again -> "valid": false
 ```
 
-**Key handling:** the Ed25519 signing seed is never committed (`*.seed` is git-ignored). Deployments inject it as `HELIX_ENCLAVE_ED25519_SEED_HEX`; a fresh checkout generates a mode-0600 seed file on first start. Only public keys are published, and every key the vault has ever used is recorded in the `enclave_keys` registry, so attestations signed before a key rotation still verify (`signer_status: "retired"`) while pinned verification (`--public-key`) stays strict.
+**Key handling:** the Ed25519 signing seed is never committed (`*.seed` is git-ignored). Deployments inject it as `HELIX_ENCLAVE_ED25519_SEED_HEX`; a fresh checkout generates a mode-0600 seed file on first start. Only public keys are published (`GET /api/healthz` on the public demo, `/healthz` on a local fleet), and every key the vault has ever used is recorded in the `enclave_keys` registry, so attestations signed before a key rotation still verify (`signer_status: "retired"`) while pinned verification (`--public-key`) stays strict.
 
 **Hosting boundary:** all AI compute runs on Nebius — Token Factory inference, the Serverless GPU Parabricks job, Object Storage. The container above (Streamlit UI + FastAPI fleet behind one Caddy port) is a stateless front-end; the public demo runs it as a single persistent managed-container instance.
 

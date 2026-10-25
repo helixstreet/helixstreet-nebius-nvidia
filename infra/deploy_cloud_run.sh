@@ -79,5 +79,5 @@ gcloud run deploy "$SERVICE" \
 
 URL="$(gcloud run services describe "$SERVICE" --project "$GCP_PROJECT" --region "$REGION" --format='value(status.url)')"
 echo "==> Deployed: ${URL}"
-echo "    Health:   ${URL}/healthz"
+echo "    Health:   ${URL}/api/healthz   (Google's front end intercepts a bare /healthz on Cloud Run)"
 echo "    API docs: ${URL}/api/docs"

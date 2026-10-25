@@ -6,7 +6,8 @@
 :{$PORT:8080} {
 	encode gzip
 
-	# FastAPI fleet (uvicorn runs with --root-path /api so Swagger at /api/docs resolves correctly)
+	# FastAPI fleet (uvicorn runs with --root-path /api so Swagger at /api/docs resolves correctly).
+	# Note: on Cloud Run the Google front end answers a bare /healthz itself (404), so clients use /api/healthz.
 	redir /api /api/docs 302
 	handle_path /api/* {
 		reverse_proxy 127.0.0.1:8000
