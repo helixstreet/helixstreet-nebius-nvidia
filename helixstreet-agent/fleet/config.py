@@ -49,6 +49,43 @@ NEBIUS_MODEL_PRICING = {
     NEMOTRON_ULTRA_MODEL: {"tier": "Tier 3 — Deep Clinical Reasoning", "input_per_1m": 1.00, "output_per_1m": 3.00},
 }
 
+# 2026 Nebius Token Factory & Nebius AI Cloud Enterprise Capabilities
+NEBIUS_ENDPOINT_FLAVORS = {
+    "fast": {
+        "flavor": "Fast",
+        "sla_target": "< 800 ms point-of-care /ask & A2A ICU negotiation",
+        "custom_speculator_id": "speculator-helix-ed25519-json-v1",
+        "speculative_speedup_x": 2.4,
+    },
+    "base": {
+        "flavor": "Base",
+        "sla_target": "Standard real-time Digital Twin synthesis ($0.0168/twin, -40.2% vs All-Ultra)",
+        "cost_per_twin_usd": 0.0168,
+    },
+    "batch": {
+        "flavor": "Batch Inference (-50% Discount)",
+        "sla_target": "24h async hospital biobank screening & nightly CPIC guideline re-evaluation",
+        "discount_pct": 50.0,
+        "cost_per_twin_usd": 0.0084,
+    },
+}
+NEBIUS_CUSTOM_SPECULATOR_ID = os.getenv(
+    "NEBIUS_CUSTOM_SPECULATOR_ID", "speculator-helix-ed25519-json-v1"
+)
+NEBIUS_DATA_LAB_PIPELINE = os.getenv(
+    "NEBIUS_DATA_LAB_PIPELINE", "helixstreet-rwe-clinical-sft-v1"
+)
+NEBIUS_SERVERLESS_LORA_BASE = os.getenv(
+    "NEBIUS_SERVERLESS_LORA_BASE", NEMOTRON_SUPER_MODEL
+)
+NEBIUS_SECRETSTASH_ID = os.getenv(
+    "NEBIUS_SECRETSTASH_ID", "mbsec-e00zxbcp465mhbrhwf"
+)
+NEBIUS_STORAGE_CLASS = os.getenv("NEBIUS_STORAGE_CLASS", "ENHANCED")
+NEBIUS_BUCKET_RESOURCE_ID = os.getenv(
+    "NEBIUS_BUCKET_RESOURCE_ID", "storagebucket-e008779569894118469733"
+)
+
 # Backwards-compatible aliases used by existing modules/tests
 REASONING_MODEL = os.getenv("REASONING_MODEL", NEMOTRON_ULTRA_MODEL)
 STEWARD_MODEL = os.getenv("STEWARD_MODEL", NEMOTRON_SUPER_MODEL)

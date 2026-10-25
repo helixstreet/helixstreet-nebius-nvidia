@@ -237,3 +237,21 @@ def test_fastapi_consent_and_living_twin_endpoints():
     assert rfd4_data["model_id"] == "nvidia/RFD4-Proteina"
     assert rfd4_data["raw_genome_bytes_exposed"] == 0
     assert "ATOM      1" in rfd4_data["binder_pdb_block"]
+
+    # Nebius Token Factory Data Lab JSONL export (Serverless LoRA + Custom Speculator)
+    r_dl = client.get("/nebius/datalab-export/pgx-demo-001")
+    assert r_dl.status_code == 200
+    dl_data = r_dl.json()
+    assert dl_data["raw_genome_bytes_exposed"] == 0
+    assert dl_data["records_exported"] >= 1
+    assert "signature_ed25519" in dl_data
+    assert "nebius_token_factory" in dl_data["jsonl"]
+
+    # Nebius 2026 Enterprise Capabilities (Fast/Base, Batch -50%, Speculator, SecretStash)
+    r_cap = client.get("/nebius/enterprise-capabilities?cohort_size=10000")
+    assert r_cap.status_code == 200
+    cap_data = r_cap.json()
+    assert cap_data["raw_genome_bytes_exposed"] == 0
+    assert cap_data["economics"]["batch_3tier_per_twin_usd"] == 0.0084
+    assert len(cap_data["capabilities"]) == 5
+    assert "signature_ed25519" in cap_data

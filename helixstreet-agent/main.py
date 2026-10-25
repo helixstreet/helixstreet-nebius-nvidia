@@ -258,6 +258,23 @@ async def bionemo_rfd4_design_endpoint(request: Request):
     )
 
 
+@app.get("/nebius/datalab-export/{patient_id}")
+async def nebius_datalab_export_endpoint(patient_id: str = "pgx-demo-001"):
+    """Exports consented Step 6 Closed-Loop RWE outcomes into a signed Nebius
+    Token Factory `Data Lab` JSONL dataset for Serverless LoRA fine-tuning and
+    Custom Speculator training (`raw_genome_bytes_exposed = 0`)."""
+    return cv.export_nebius_datalab_sft_dataset(patient_id=patient_id)
+
+
+@app.get("/nebius/enterprise-capabilities")
+async def nebius_enterprise_capabilities_endpoint(cohort_size: int = 10000):
+    """Returns signed economics & architecture telemetry for the 2026 Nebius
+    Token Factory (`Fast` / `Base` / `Batch -50%`, `Custom Speculator`,
+    `Data Lab` + `Serverless LoRA`) & Nebius AI Cloud (`SecretStash`, `Object
+    Storage Enhanced`) stack."""
+    return cv.get_nebius_2026_enterprise_capabilities(cohort_size=cohort_size)
+
+
 def _parse_gcs_event(body: dict) -> tuple[str, str, str]:
     """Accepts direct storage event payloads, Pub/Sub push envelopes, or S3 event notifications."""
     if "bucket" in body and "name" in body:  # direct storage event data
