@@ -31,10 +31,40 @@ def _isolated_data_dir(tmp_path, monkeypatch):
 
 def test_knowledge_graph_computed_counts_and_structure():
     counts = KNOWLEDGE_GRAPH_METADATA["indexed_counts"]
-    assert counts["drugs"] == 6
-    assert counts["genes"] == 5
-    assert counts["phenotype_rules"] >= 8
-    assert counts["citations"] >= 4
+    assert counts["drugs"] >= 13
+    assert counts["genes"] >= 6
+    assert counts["phenotype_rules"] >= 38
+    assert counts["citations"] >= 9
+
+    # every curated rule has the fields the attestation signer needs
+    from fleet.tools.knowledge_graph import PGX_KNOWLEDGE_GRAPH
+
+    for drug, node in PGX_KNOWLEDGE_GRAPH.items():
+        assert node["guideline_url"].startswith("https://pmc.ncbi.nlm.nih.gov/articles/PMC"), drug
+        for cat, rule in node["phenotypes"].items():
+            assert cat in ("poor", "intermediate", "normal", "rapid"), (drug, cat)
+            for field in ("phenotype_label", "actionability", "evidence_level", "cpic_strength", "primary_recommendation", "ranked_alternatives", "guideline_summary"):
+                assert rule.get(field) not in (None, "", []), (drug, cat, field)
+            assert "PMID:" in rule["guideline_summary"], (drug, cat)
+
+    # new nodes resolve with CPIC-faithful recommendations
+    vori = query_knowledge_graph("vfend", "poor")
+    assert vori["drug"] == "voriconazole" and vori["ranked_alternatives"][0]["drug"] == "isavuconazole"
+    tac = query_knowledge_graph("tacrolimus", "poor")
+    assert "standard" in tac["primary_recommendation"].lower()
+    pht = query_knowledge_graph("phenytoin", "intermediate")
+    assert "25%" in pht["primary_recommendation"]
+    ppi = query_knowledge_graph("omeprazole", "poor")
+    assert "50% reduction" in ppi["primary_recommendation"]
+    ator = query_knowledge_graph("atorvastatin", "intermediate")
+    assert "≤40 mg" in ator["primary_recommendation"]
+    clop_rapid = query_knowledge_graph("clopidogrel", "rapid")
+    assert "standard dose" in clop_rapid["primary_recommendation"].lower()
+
+    # uncurated phenotype never borrows another phenotype's rule
+    missing = query_knowledge_graph("5-fluorouracil", "rapid")
+    assert missing["found"] is True and missing.get("rule_missing") is True
+    assert missing["ranked_alternatives"] == []
 
     res = query_knowledge_graph("clopidogrel", "poor")
     assert res["found"] is True
