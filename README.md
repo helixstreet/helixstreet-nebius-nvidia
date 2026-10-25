@@ -304,6 +304,9 @@ python scripts/verify_attestation.py attestation.json --healthz-url https://nebi
    - **Unifying `aiproject-` (Token Factory) and `project-` (Nebius AI Cloud) IDs** so a single project credential can invoke both `api.tokenfactory.nebius.com` and `nebius ai job create`.
    - **Strict `reasoning_content` separation when `enable_thinking=False`** on `nvidia/NVIDIA-Nemotron-3-Nano-30B-A3B` so internal planning text (`"We need to..."`) never spills into `content` after tool calls.
    - **Native S3 Object Storage event webhooks (`s3:ObjectCreated:*` → `/storage-event`) and `--webhook-url` completion callbacks on `nebius ai job create`**.
+   - **Nemotron-specific endpoint flavors and batch pricing**: as of 2026-10-25 the `-fast` model-id suffix returns `model_not_found` for the Nemotron 3 models and no batch inference option is listed for them.
+   - **Documented JSON-schema (guided decoding) outputs for Nemotron 3** and **programmatic per-key usage/cost export**, so clinical apps need neither prompt-level JSON contracts nor cost reconstruction from `usage` fields.
+   - **Grounding caveat worth publishing**: in our persisted 5-run benchmark one Ultra 550B sample called a `CYP2C19 *2/*2` genotype an *ultrarapid* metabolizer (temperature 0.1). Helixstreet therefore computes phenotypes deterministically and uses Nemotron only to explain signed facts.
 
 ---
 
