@@ -462,7 +462,8 @@ def render_sidebar() -> int:
             with st.spinner("Staging manifest + BAM into Object Storage and triggering fleet…"):
                 ok, msg = start_demo_run(user_id)
             if ok:
-                st.success(msg)
+                st.session_state["last_triggered_run"] = {"user_id": user_id, "started": time.time(), "kind": "WGS demo"}
+                st.success(f"{msg} Track it in the **Pipeline runs** tab (about 1–2 minutes).")
             else:
                 st.error(msg)
 
@@ -499,7 +500,8 @@ def render_sidebar() -> int:
                         gen = str(vcf_blob.generation or int(time.time() * 1000))
                         ok, msg = _trigger_fleet_storage_event(DATA_BUCKET, f"uploads/{pgx_uid}/pgx-panel.vcf", gen)
                         if ok:
-                            st.success(f"Uploaded PGx panel as '{pgx_uid}'. {msg}")
+                            st.session_state["last_triggered_run"] = {"user_id": pgx_uid, "started": time.time(), "kind": "PGx panel"}
+                            st.success(f"Uploaded PGx panel as '{pgx_uid}'. {msg} Track it in the **Pipeline runs** tab (about 45 seconds).")
                         else:
                             st.error(msg)
                     except Exception as e:
@@ -533,7 +535,8 @@ def render_sidebar() -> int:
                         gen = str(blob.generation or int(time.time() * 1000))
                         ok, msg = _trigger_fleet_storage_event(DATA_BUCKET, obj_name, gen)
                         if ok:
-                            st.success(f"Uploaded s3://{DATA_BUCKET}/{obj_name}. {msg}")
+                            st.session_state["last_triggered_run"] = {"user_id": user_id, "started": time.time(), "kind": "BYO VCF"}
+                            st.success(f"Uploaded s3://{DATA_BUCKET}/{obj_name}. {msg} Track it in the **Pipeline runs** tab.")
                         else:
                             st.error(msg)
                     except Exception as e:
@@ -623,6 +626,28 @@ def render_pipeline_runs() -> None:
                 border=True,
             )
 
+    triggered = st.session_state.get("last_triggered_run")
+    if triggered:
+        t_state = next((s for s in states if s["id"] == triggered["user_id"]), None)
+        stage = (t_state or {}).get("stage", "QUEUED")
+        elapsed = int(time.time() - float(triggered.get("started", time.time())))
+        n_steps = len((t_state or {}).get("trace") or [])
+        col_prog, col_btn = st.columns([5, 1], vertical_alignment="center")
+        if stage in ("TWIN_SAVED", "TWIN_PERSISTED"):
+            col_prog.success(
+                f"✅ **{triggered['kind']} run `{triggered['user_id']}` finished** in ~{elapsed}s · {n_steps} persisted agent steps · "
+                "the twin is now listed in **Digital twins**."
+            )
+        elif stage == "FAILED":
+            col_prog.error(f"❌ Run `{triggered['user_id']}` failed after {elapsed}s — inspect the trace below.")
+        else:
+            col_prog.info(
+                f"⏳ **{triggered['kind']} run `{triggered['user_id']}` in progress** · stage `{stage}` · {n_steps} agent steps so far · "
+                f"{elapsed}s elapsed. Nemotron agents are running on Nebius Token Factory; click **Refresh** to update."
+            )
+        if col_btn.button("🔄 Refresh", key="btn_refresh_run"):
+            st.rerun()
+
     if not states:
         st.info("No pipeline runs yet — click **Start demo run** or **Start PGx demo run** in the sidebar.")
         return
@@ -640,7 +665,9 @@ def render_pipeline_runs() -> None:
     )
     st.dataframe(overview, hide_index=True, width="stretch")
 
-    selected = st.selectbox("Inspect reasoning trace & telemetry for run", [s["id"] for s in reversed(states)])
+    run_ids = [s["id"] for s in reversed(states)]
+    default_run_idx = run_ids.index(triggered["user_id"]) if triggered and triggered.get("user_id") in run_ids else 0
+    selected = st.selectbox("Inspect reasoning trace & telemetry for run", run_ids, index=default_run_idx)
     sel_state = next((s for s in states if s["id"] == selected), {})
     st.markdown(f"**Stage:** `{sel_state.get('stage', '?')}` — {sel_state.get('details', '')}")
 
