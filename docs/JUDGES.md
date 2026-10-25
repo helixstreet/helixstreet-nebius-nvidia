@@ -1,0 +1,66 @@
+# Helixstreet — 5-Minute Judge Guide
+
+Live demo: **https://nebius.helixstreet.io** · API explorer: **https://nebius.helixstreet.io/api/docs** · Health + enclave keys: **https://nebius.helixstreet.io/api/healthz**
+
+Everything below runs against the live deployment. No login is needed. Live LLM calls share a daily quota; when it is exhausted the UI says so and falls back to the deterministic guideline template (clearly labelled).
+
+## The 60-second path
+
+1. Open the demo. The first tab, **Living Twin & Consent Gate**, is the product: a sealed genome answering a pharmacy's drug-safety question without releasing raw genome bytes.
+2. Click **▶ Run Complete 6-Step Lifecycle Self-Test**. In about ten seconds you get a table showing: consent grant → Ed25519-signed attestation explained live by **NVIDIA Nemotron 3 Super on Nebius Token Factory** (latency and token counts shown) → signature verification → one-tap revocation → signed refusal receipt → unprompted HL7 FHIR R4 prescription alert → consent restored.
+3. Click **⚡ Ask Patient's Living Twin** (any drug in the dropdown). Read the ranked alternatives, the **verbatim passage fetched with Tavily Extract** from the published CPIC guideline, and the Nemotron summary. Click **🔐 Verify Ed25519 Signature & Receipt Hash**, then **📥 Download Signed Attestation** and verify it offline (next section).
+4. In the sidebar click **Start PGx demo run**. About 45 seconds later the **Pipeline runs** tab shows the three-agent analysis with per-step model, latency, tokens and cost (Nemotron 3 Ultra for analysis and pharmacogenomics, Nemotron 3 Super for twin synthesis), and **Digital twins** lists the new twin.
+5. **Pipeline runs** → select `demo-na12878` → open the **NVIDIA Clara Parabricks** inspector and the verified **Nebius L40S job log** (`aijob-e00p9xmknz4yphfvmm`, 78 records / 72 PASS in 6.049 s).
+
+## Verify a signed attestation offline
+
+```bash
+git clone https://github.com/helixstreet/helixstreet-nebius-nvidia.git && cd helixstreet-nebius-nvidia
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+
+curl -s -X POST https://nebius.helixstreet.io/api/ask \
+  -H 'content-type: application/json' \
+  -d '{"patient_id":"pgx-demo-001","requester":"demo-pharmacy-basel","purpose":"drug_safety_dispensing_check","drug":"clopidogrel","use_nemotron":true}' \
+  > attestation.json
+
+.venv/bin/python scripts/verify_attestation.py attestation.json --healthz-url https://nebius.helixstreet.io/api/healthz
+# -> "valid": true. Edit one character inside "attestation" and run it again -> "valid": false
+```
+
+The verifier pins the public keys published by the running fleet (`enclave_trusted_keys`); the signing seed is never in the repository.
+
+## What is live and what is simulated
+
+| Component | Status | Where to check |
+|---|---|---|
+| 3-tier Nemotron 3 routing (Nano / Super / Ultra) on Nebius Token Factory with tool calling | **Live** on every pipeline run, self-test, attestation and copilot query | Pipeline runs tab telemetry; `helixstreet-agent/fleet/nebius_llm.py`, `agents.py` |
+| NVIDIA Clara Parabricks `pbrun deepvariant` on a Nebius Serverless GPU Job (L40S) | **Executed once for real** (job `aijob-e00p9xmknz4yphfvmm`); interactive runs replay its real output VCF (`parabricks_na12878_replay_fixture`) unless `HELIX_LIVE_GPU_DISPATCH=true` | Parabricks inspector, `seed_data/.../nebius_job_aijob-e00p9xmknz4yphfvmm.{json,log}` |
+| Ed25519 attestations, hash-chained receipts and audit ledger, salted Merkle proofs | **Live**, verifiable offline | `scripts/verify_attestation.py`, Private proofs tab, Audit ledger tab |
+| Tavily Search (CPIC/FDA/PharmGKB/ClinicalTrials.gov) and Tavily Extract (verbatim guideline passage, 24 h cache) | **Live** | Attestation panel; `fleet/tools/pharmacogenomics.py` |
+| Ensembl 1000 Genomes, CPIC REST API, OpenFDA, Europe PMC | **Live** with curated offline fallbacks | Digital twins tab |
+| Federated cohort query, A2A regimen negotiation, 10-year timeline | **Simulated** (`execution_mode: simulated_scenario`, illustrative constants) | Living Twin tab → "Simulated scenarios" expander |
+| NVIDIA BioNeMo RFD4-Proteina | **Roadmap mock** (`mock_not_executed`, no structures or scores generated) | Digital twins tab → roadmap expander |
+| Token Factory Data Lab export | **Local JSONL only**, nothing uploaded | `GET /api/nebius/datalab-export/pgx-demo-001` |
+
+## Where the Nebius and NVIDIA pieces live in the code
+
+- `helixstreet-agent/fleet/nebius_llm.py` — Google ADK `BaseLlm` adapter for Nebius Token Factory (OpenAI-compatible API, tool calling, `enable_thinking` toggle, retry).
+- `helixstreet-agent/fleet/agents.py` — the five agents and which Nemotron tier each uses, with the reasoning for the choice in the README table.
+- `helixstreet-agent/fleet/tools/variant_calling.py` — Nebius Serverless GPU Job submission (`nebius ai job create`, S3 volume via SecretStash) and the replay fixture built from the real job output.
+- `helixstreet-agent/fleet/telemetry.py` — per-step token/latency/cost aggregation and the 5-run-per-tier benchmark persisted in the Memory Bank.
+- `helixstreet-agent/fleet/tools/consent_vault.py` — Consent Gate, vault-derived phenotype calling, Ed25519 signing, key registry, FHIR watcher.
+- `helixstreet-agent/fleet/tools/knowledge_graph.py` — the hand-curated CPIC/DPWG rules with PMID / PMC citations.
+
+## Tests
+
+```bash
+cd helixstreet-agent && ../.venv/bin/python -m pytest -q    # 73 tests, no API keys needed
+```
+
+CI runs the same suite on Python 3.11 and 3.12 on every push (`.github/workflows/ci.yml`).
+
+## Known limits
+
+- The public demo keeps judge-created runs in a single persistent instance; a redeploy resets to the seeded state.
+- State-mutating API endpoints (`/api/consents/*`, `/api/rwe/outcome`, `/api/guidelines/update`, `/api/a2a/negotiate`, `/api/storage-event`) require the deployment's `X-Helix-Token`; the UI buttons use it for you.
+- All data is public and consented (GIAB NA12878, 1000 Genomes) or fully synthetic. Research-grade only, never medical advice.

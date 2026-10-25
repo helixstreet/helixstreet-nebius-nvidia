@@ -15,11 +15,31 @@
 
 > **Executive Summary:** **Helixstreet is the first consent-native pharmacogenomics platform. A patient's genome stays sealed in their own vault; Helixstreet's multi-agent system computes guideline-grounded phenotype attestations inside a confidential enclave and releases only a signed, auditable answer — *"CYP2C19 poor metabolizer, CPIC 2024, evidence level 1A"* — to the clinician, pharmacy or AI that asked (`0 bytes raw genome released to requesters`). Variant summaries are sent to Nebius Token Factory for inference; raw BAM/VCF never leave the bucket; enable Token Factory Zero Data Retention for production. Every access is purpose-bound, time-limited and recorded on a tamper-evident ledger. The twin watches new prescriptions and guideline updates for life, flagging actionable interactions months before harm.**
 
+<p align="center">
+  <a href="https://github.com/helixstreet/helixstreet-nebius-nvidia/actions/workflows/ci.yml"><img src="https://github.com/helixstreet/helixstreet-nebius-nvidia/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <img src="https://img.shields.io/badge/tests-73%20passing-brightgreen" alt="73 tests">
+  <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="Apache-2.0">
+  <a href="https://nebius.helixstreet.io"><img src="https://img.shields.io/badge/live%20demo-nebius.helixstreet.io-0e7490" alt="Live demo"></a>
+</p>
+
+**Judges: start with [docs/JUDGES.md](docs/JUDGES.md)** — a 5-minute path through the live demo, what is live versus simulated, and how to verify a signed attestation offline.
+
+---
+
+## Screenshots
+
+| | |
+|---|---|
+| ![Consent-native layer overview](docs/gallery/01-overview-consent-native-layer.png) | ![Ed25519 attestation explained live by Nemotron 3 Super](docs/gallery/02-ed25519-attestation-live-nemotron.png) |
+| ![Per-step Nano / Ultra / Super telemetry and cost](docs/gallery/05-three-tier-nemotron-telemetry.png) | ![Verified Clara Parabricks job on Nebius L40S](docs/gallery/06-nvidia-parabricks-nebius-l40s-job.png) |
+
+More in [`docs/gallery/`](docs/gallery/): 1-tap revocation with the signed refusal receipt, the Tavily Extract verbatim passage, the persisted Token Factory benchmark, and the RCSB 3D structure viewer.
+
 ---
 
 ## Why Consent-Native Pharmacogenomics?
 
-Roughly **95% of people carry at least one actionable pharmacogenomic variant**, and adverse drug reactions are a leading cause of hospital admission in Europe, yet fewer than a few percent of patients are ever tested — because a PGx result today is a **one-time PDF locked in one lab**, and **genomic data can never be rotated like a password**.
+Between **91% and 99% of people carry at least one actionable pharmacogenomic variant**, depending on the gene panel (Van Driest et al., *Clin Pharmacol Ther* 2014, [PMID 24253661](https://pubmed.ncbi.nlm.nih.gov/24253661/); Ji et al., *J Mol Diagn* 2016, [PMID 26947514](https://pubmed.ncbi.nlm.nih.gov/26947514/)), and adverse drug reactions cause about **6.5% of hospital admissions** (Pirmohamed et al., *BMJ* 2004, [PMID 15231615](https://pubmed.ncbi.nlm.nih.gov/15231615/)) and rank among the leading causes of death in hospitalised patients (Lazarou et al., *JAMA* 1998, [PMID 9555760](https://pubmed.ncbi.nlm.nih.gov/9555760/)). Yet pre-emptive PGx testing is still rare in routine care — because a PGx result today is a **one-time PDF locked in one lab**, and **genomic data can never be rotated like a password**.
 
 **Helixstreet** combines two tightly integrated layers on **Nebius Token Factory** and **Nebius AI Cloud**:
 

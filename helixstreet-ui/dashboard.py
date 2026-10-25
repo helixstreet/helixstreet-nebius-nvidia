@@ -1465,7 +1465,7 @@ def render_living_twin() -> None:
             with st.container(border=True):
                 st.subheader(":material/enhanced_encryption: Step 1 & 5 · Patient Vault & Consents")
                 st.caption(
-                    "95% of patients carry ≥1 actionable PGx variant. Here, the genome stays sealed (`0 bytes raw genome released to requesters`) "
+                    "91–99% of patients carry ≥1 actionable PGx variant (Van Driest 2014; Ji 2016). Here, the genome stays sealed (`0 bytes raw genome released to requesters`) "
                     "and answers authorized clinical queries for life."
                 )
                 st.markdown(
