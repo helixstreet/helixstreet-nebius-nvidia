@@ -452,6 +452,9 @@ def test_fastapi_endpoints_and_token_auth(monkeypatch):
     assert r_cap.status_code == 200
     cap_data = r_cap.json()
     assert cap_data["gpu_job"]["job_id"] == "aijob-e00p9xmknz4yphfvmm"
+    assert cap_data["gpu_jobs_verified"] >= 1
+    assert cap_data["gpu_jobs"][0]["state"] == "COMPLETED"
+    assert any(j["job_id"] == "aijob-e00p9xmknz4yphfvmm" and j["vcf_variants_pass"] == 72 for j in cap_data["gpu_jobs"])
     assert cap_data["secret"]["secret_id"] == "mbsec-e00zxbcp465mhbrhwf"
     assert len(cap_data["roadmap"]) == 3
 

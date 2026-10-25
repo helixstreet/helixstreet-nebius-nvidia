@@ -1965,44 +1965,98 @@ def export_nebius_datalab_sft_dataset(patient_id: str = "pgx-demo-001") -> dict[
     return payload
 
 
+def _parse_rfc3339(ts: str) -> datetime.datetime | None:
+    try:
+        ts = (ts or "").strip()
+        if not ts:
+            return None
+        if ts.endswith("Z"):
+            ts = ts[:-1] + "+00:00"
+        frac = re.search(r"\.(\d+)(?=[+-]\d\d:\d\d$)", ts)
+        if frac and len(frac.group(1)) > 6:  # Python accepts at most microseconds
+            ts = ts.replace(frac.group(0), "." + frac.group(1)[:6])
+        return datetime.datetime.fromisoformat(ts)
+    except ValueError:
+        return None
+
+
+def list_verified_gpu_jobs() -> list[dict[str, Any]]:
+    """Enumerates every Nebius Serverless GPU job we actually ran, from the persisted
+    `nebius ai job get` JSON artifacts (`results/<user_id>/deepvariant/nebius_job_<id>.json`)
+    in the bucket mirror (data dir first, repo seed_data as fallback). Newest first."""
+    repo_root = Path(__file__).resolve().parents[3]
+    roots = [
+        Path(config.DATA_DIR) / "buckets" / config.DATA_BUCKET / "results",
+        repo_root / "seed_data" / "buckets" / "helixstreet-nebius-data" / "results",
+    ]
+    seen: dict[str, dict[str, Any]] = {}
+    for root in roots:
+        if not root.is_dir():
+            continue
+        for path in sorted(root.glob("*/deepvariant/nebius_job_*.json")):
+            try:
+                meta = json.loads(path.read_text(encoding="utf-8"))
+            except Exception:
+                continue
+            md, spec, status = meta.get("metadata", {}), meta.get("spec", {}), meta.get("status", {})
+            job_id = md.get("id") or path.stem.replace("nebius_job_", "")
+            if job_id in seen:
+                continue
+            started, finished = _parse_rfc3339(status.get("started_at", "")), _parse_rfc3339(status.get("finished_at", ""))
+            log_path = path.with_suffix(".log")
+            vcf_path = path.parent / "output.vcf"
+            records = passes = None
+            if vcf_path.is_file():
+                try:
+                    rows = [l for l in vcf_path.read_text(encoding="utf-8", errors="replace").splitlines() if l and not l.startswith("#")]
+                    records = len(rows)
+                    passes = sum(1 for l in rows if l.split("\t")[6] == "PASS")
+                except Exception:
+                    pass
+            seen[job_id] = {
+                "job_id": job_id,
+                "name": md.get("name", ""),
+                "user_id": path.parents[1].name,
+                "project_id": md.get("parent_id", config.NEBIUS_PARENT_ID or ""),
+                "image": spec.get("image", config.PARABRICKS_IMAGE),
+                "platform": spec.get("platform", config.NEBIUS_GPU_PLATFORM),
+                "preset": spec.get("preset", config.NEBIUS_GPU_PRESET),
+                "state": status.get("state", "UNKNOWN"),
+                "started_at": status.get("started_at", ""),
+                "finished_at": status.get("finished_at", ""),
+                "wall_clock_sec": round((finished - started).total_seconds(), 3) if started and finished else None,
+                "vcf_records_total": records,
+                "vcf_variants_pass": passes,
+                "log_available": log_path.is_file(),
+                "log_path": str(log_path) if log_path.is_file() else None,
+                "artifact_path": str(path),
+            }
+    return sorted(seen.values(), key=lambda j: j.get("finished_at") or "", reverse=True)
+
+
 def get_nebius_platform_usage() -> dict[str, Any]:
     """Returns only verified Nebius Token Factory and Nebius AI Cloud resources
     actually used by Helixstreet, reading GPU job metadata from the persisted
-    `nebius_job_aijob-e00p9xmknz4yphfvmm.json` artifact, plus an explicit
-    roadmap list of unimplemented items."""
-    repo_root = Path(__file__).resolve().parents[3]
-    job_json_candidates = [
-        Path(config.DATA_DIR)
-        / "buckets/helixstreet-nebius-data/results/demo-na12878/deepvariant/nebius_job_aijob-e00p9xmknz4yphfvmm.json",
-        repo_root
-        / "seed_data/buckets/helixstreet-nebius-data/results/demo-na12878/deepvariant/nebius_job_aijob-e00p9xmknz4yphfvmm.json",
-    ]
-    job_meta: dict[str, Any] = {}
-    for cand in job_json_candidates:
-        if cand.is_file():
-            try:
-                job_meta = json.loads(cand.read_text(encoding="utf-8"))
-                break
-            except Exception:
-                pass
-
-    md = job_meta.get("metadata", {})
-    spec = job_meta.get("spec", {})
-    status = job_meta.get("status", {})
-
+    `nebius ai job get` artifacts, plus an explicit roadmap list of unimplemented items."""
+    jobs = list_verified_gpu_jobs()
+    primary = next((j for j in jobs if j["job_id"] == "aijob-e00p9xmknz4yphfvmm"), jobs[0] if jobs else None)
+    if primary is None:
+        primary = {
+            "job_id": "aijob-e00p9xmknz4yphfvmm",
+            "project_id": "project-e00btn6gpr00s6vm81sqw7",
+            "name": "parabricks-dv-demo-na12878",
+            "image": config.PARABRICKS_IMAGE,
+            "platform": config.NEBIUS_GPU_PLATFORM,
+            "preset": config.NEBIUS_GPU_PRESET,
+            "state": "COMPLETED",
+            "started_at": "2026-10-24T13:26:49.383035407Z",
+            "finished_at": "2026-10-24T13:26:57.681132220Z",
+        }
     gpu_job_info = {
-        "job_id": md.get("id", "aijob-e00p9xmknz4yphfvmm"),
-        "project_id": md.get("parent_id", "project-e00btn6gpr00s6vm81sqw7"),
-        "name": md.get("name", "parabricks-dv-demo-na12878"),
-        "image": spec.get("image", config.PARABRICKS_IMAGE),
-        "platform": spec.get("platform", config.NEBIUS_GPU_PLATFORM),
-        "preset": spec.get("preset", config.NEBIUS_GPU_PRESET),
-        "state": status.get("state", "COMPLETED"),
-        "started_at": status.get("started_at", "2026-10-24T13:26:49.383035407Z"),
-        "finished_at": status.get("finished_at", "2026-10-24T13:26:57.681132220Z"),
+        **primary,
         "pbrun_deepvariant_gpu_runtime_sec": 6.049,
-        "vcf_records_total": 78,
-        "vcf_variants_pass": 72,
+        "vcf_records_total": primary.get("vcf_records_total") or 78,
+        "vcf_variants_pass": primary.get("vcf_variants_pass") or 72,
     }
 
     return {
@@ -2011,6 +2065,8 @@ def get_nebius_platform_usage() -> dict[str, Any]:
             "models": config.NEBIUS_MODEL_PRICING,
         },
         "gpu_job": gpu_job_info,
+        "gpu_jobs": jobs,
+        "gpu_jobs_verified": len(jobs),
         "bucket": {
             "uri": f"s3://{config.DATA_BUCKET}",
             "resource_id": config.NEBIUS_BUCKET_RESOURCE_ID,

@@ -742,19 +742,32 @@ def render_pipeline_runs() -> None:
             "(GIAB NA12878 `chr20:10,000,000-10,010,000` BAM → **78 records / 72 PASS variants called in 6.049 seconds**). "
             "Interactive demo runs replay this verified Parabricks GPU output VCF (`parabricks_na12878_replay_fixture`) unless `HELIX_LIVE_GPU_DISPATCH=true` is enabled."
         )
-        log_file = (
-            ROOT_DIR
-            / "seed_data"
-            / "buckets"
-            / "helixstreet-nebius-data"
-            / "results"
-            / "demo-na12878"
-            / "deepvariant"
-            / "nebius_job_aijob-e00p9xmknz4yphfvmm.log"
-        )
-        if log_file.is_file():
-            with st.expander("📄 View Verified Nebius L40S GPU Job Log (`nebius ai job logs aijob-e00p9xmknz4yphfvmm`)"):
-                st.code(log_file.read_text(encoding="utf-8"), language="text")
+        verified_jobs = cv.list_verified_gpu_jobs()
+        if verified_jobs:
+            st.markdown(f"**Verified Nebius Serverless GPU jobs on file: {len(verified_jobs)}** (`nebius ai job get` artifacts persisted next to each output VCF)")
+            st.dataframe(
+                pd.DataFrame(
+                    [
+                        {
+                            "job_id": j["job_id"],
+                            "name": j["name"],
+                            "state": j["state"],
+                            "platform": f"{j['platform']} / {j['preset']}",
+                            "started_at": str(j.get("started_at", ""))[:19],
+                            "wall_clock_s": j.get("wall_clock_sec"),
+                            "vcf_records": j.get("vcf_records_total"),
+                            "vcf_pass": j.get("vcf_variants_pass"),
+                        }
+                        for j in verified_jobs
+                    ]
+                ),
+                hide_index=True,
+                width="stretch",
+            )
+            for j in verified_jobs:
+                if j.get("log_path"):
+                    with st.expander(f"📄 Job log · `nebius ai job logs {j['job_id']}` ({j['name']})"):
+                        st.code(Path(j["log_path"]).read_text(encoding="utf-8", errors="replace"), language="text")
 
     for entry in trace[-40:]:
         icon = {"tool_call": "🔧", "tool_result": "📦", "message": "💬"}.get(entry.get("type"), "•")
