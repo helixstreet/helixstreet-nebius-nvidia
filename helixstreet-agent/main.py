@@ -203,22 +203,31 @@ async def record_closed_loop_rwe(request: Request):
     )
 
 
+@app.get("/guidelines/watch")
+async def guideline_watch_endpoint(drug: str = "clopidogrel", gene: str = "CYP2C19"):
+    """Live guideline watch (no alert raised): Tavily Search restricted to the guideline
+    publishers (CPIC, ClinPGx / PharmGKB, DPWG), ranked to prefer the canonical CPIC
+    guideline page, plus Tavily Extract of that page and a SHA-256 passage fingerprint."""
+    from fleet.tools.knowledge_graph import query_knowledge_graph
+    from fleet.tools.pharmacogenomics import watch_guideline_updates
+
+    kg = query_knowledge_graph(drug[:60])
+    return watch_guideline_updates(
+        drug=drug[:60], gene=gene[:20], fallback_url=kg.get("guideline_url", "") if kg.get("found") else ""
+    )
+
+
 @app.post("/guidelines/update", dependencies=[Depends(_require_helix_token)])
 async def guideline_update_webhook(request: Request):
-    """Always-On Living Twin CPIC/DPWG Guideline Version Watcher endpoint."""
+    """Always-On Living Twin guideline stream. Omit `new_guideline_version` to run the
+    live Tavily watch; supply it to replay an explicit registry push (webhook mode)."""
     body = await request.json()
     return cv.ingest_guideline_update(
         patient_id=body.get("patient_id", "pgx-demo-001"),
         gene=body.get("gene", "CYP2C19"),
         drug=body.get("drug", "clopidogrel"),
-        new_guideline_version=body.get(
-            "new_guideline_version",
-            "CPIC/DPWG 2026.10 Harmonized Neurovascular & Antiplatelet Update",
-        ),
-        change_summary=body.get(
-            "change_summary",
-            "Harmonized CPIC & European DPWG Level-1A upgrade: extends mandatory CYP2C19 *2/*2 and *1/*2 clopidogrel avoidance to minor ischemic stroke / TIA.",
-        ),
+        new_guideline_version=(str(body["new_guideline_version"])[:240] if body.get("new_guideline_version") else None),
+        change_summary=(str(body["change_summary"])[:1200] if body.get("change_summary") else None),
         use_nemotron=bool(body.get("use_nemotron", True)),
     )
 

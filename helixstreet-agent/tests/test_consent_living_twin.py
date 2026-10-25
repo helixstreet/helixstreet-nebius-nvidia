@@ -248,9 +248,54 @@ def test_vault_derived_phenotype_reference_empty_and_unknown_genes():
     assert unknown_drug["decision"] == "REFUSED_INSUFFICIENT_MARKERS"
 
 
+def test_live_guideline_watch_detects_change_between_checks(monkeypatch):
+    from fleet.tools import pharmacogenomics as pgx
+
+    cv.seed_living_twin_defaults()
+    fake = {
+        "execution_mode": "live_tavily_watch",
+        "query": "CYP2C19 clopidogrel pharmacogenomic guideline update dosing recommendation",
+        "include_domains": ["cpicpgx.org"],
+        "checked_at": "2026-10-25T00:00:00+00:00",
+        "sources": [
+            {
+                "title": "CPIC Guideline for Clopidogrel and CYP2C19",
+                "url": "https://cpicpgx.org/guidelines/guideline-for-clopidogrel-and-cyp2c19/",
+                "snippet": "Updated recommendation.",
+                "retrieved_at": "2026-10-25T00:00:00+00:00",
+            }
+        ],
+        "passage": {"text": "CYP2C19 poor metabolizers: avoid clopidogrel.", "url": "https://cpicpgx.org/x", "source": "tavily_extract"},
+        "fingerprint": "a" * 64,
+        "result_count": 1,
+    }
+    monkeypatch.setattr(pgx, "watch_guideline_updates", lambda drug, gene, **_: dict(fake))
+    first = cv.ingest_guideline_update(patient_id="pgx-demo-001", drug="clopidogrel", use_nemotron=False)
+    assert first["execution_mode"] == "live_tavily_watch"
+    assert first["guideline_changed_since_last_check"] is True
+    assert first["guideline_sources"][0]["url"].startswith("https://cpicpgx.org/")
+    assert first["guideline_fingerprint"] == "a" * 64
+    assert "NEW OR CHANGED" in first["severity"]
+    second = cv.ingest_guideline_update(patient_id="pgx-demo-001", drug="clopidogrel", use_nemotron=False)
+    assert second["guideline_changed_since_last_check"] is False
+    assert second["guideline_previous_check"] == "2026-10-25T00:00:00+00:00"
+    assert "NO CHANGE" in second["severity"]
+    # explicit webhook payload still works and is labelled as caller-supplied
+    explicit = cv.ingest_guideline_update(
+        patient_id="pgx-demo-001",
+        drug="clopidogrel",
+        new_guideline_version="CPIC 2027 test push",
+        change_summary="Test change.",
+        use_nemotron=False,
+    )
+    assert explicit["execution_mode"] == "caller_supplied_update"
+    assert explicit["guideline_update_version"] == "CPIC 2027 test push"
+
+
 def test_fastapi_endpoints_and_token_auth(monkeypatch):
     client = TestClient(app_main.app)
     auth_headers = {"X-Helix-Token": config.HELIX_API_TOKEN}
+    monkeypatch.delenv("TAVILY_API_KEY", raising=False)  # the suite must not depend on local keys
 
     # Unauthenticated POSTs to protected endpoints must return 401
     for path in (
@@ -315,6 +360,11 @@ def test_fastapi_endpoints_and_token_auth(monkeypatch):
     )
     assert r_gdl.status_code == 200
     assert r_gdl.json()["trigger_type"] == "PROACTIVE_LIVING_TWIN_GUIDELINE_UPDATE_WATCHER"
+    # no TAVILY_API_KEY in tests -> the stream must label itself as simulated, never pretend to be live
+    assert r_gdl.json()["execution_mode"] == "simulated_guideline_update"
+    r_watch = client.get("/guidelines/watch?drug=clopidogrel&gene=CYP2C19")
+    assert r_watch.status_code == 200
+    assert r_watch.json()["execution_mode"] == "tavily_not_configured"
 
     # Simulated scenarios: Federated cohort query, A2A negotiation, 10-year timeline
     r_fed = client.post("/federated/cohort-query", json={"gene": "CYP2C19", "drug": "clopidogrel"})

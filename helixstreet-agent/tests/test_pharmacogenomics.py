@@ -15,6 +15,7 @@ from fleet.tools.pharmacogenomics import (
     _trim_passage,
     search_clinical_trials_tavily,
     search_tavily_clinical_guidelines,
+    watch_guideline_updates,
 )
 
 
@@ -156,6 +157,118 @@ class TestTavilyClinicalSearchAndExtract:
         assert len(trimmed) <= 300
         assert trimmed.endswith(".")
         assert _trim_passage("short passage", 300) == "short passage"
+
+    def test_guideline_watch_returns_sources_passage_and_fingerprint(self, monkeypatch):
+        import requests
+
+        with tempfile.TemporaryDirectory() as tmp:
+            monkeypatch.setattr(config, "DATA_DIR", tmp)
+            monkeypatch.setattr(config, "HELIX_DATA_DIR", tmp)
+            clients.state_store.cache_clear()
+            monkeypatch.setenv("TAVILY_API_KEY", "tvly-test-key")
+            calls: list[dict] = []
+
+            class FakeResp:
+                status_code = 200
+
+                def __init__(self, payload):
+                    self._payload = payload
+
+                def raise_for_status(self):
+                    pass
+
+                def json(self):
+                    return self._payload
+
+            def fake_post(url, headers=None, json=None, timeout=None):
+                calls.append({"url": url, "json": json, "headers": headers})
+                if url.endswith("/search"):
+                    assert "cpicpgx.org" in json["include_domains"]
+                    assert "time_range" not in json
+                    return FakeResp(
+                        {
+                            "results": [
+                                {
+                                    "title": "CPIC Guideline for Clopidogrel and CYP2C19 — 2022 update",
+                                    "url": "https://cpicpgx.org/guidelines/guideline-for-clopidogrel-and-cyp2c19/",
+                                    "content": "Updated recommendations for CYP2C19 poor and intermediate metabolizers.",
+                                    "score": 0.91,
+                                }
+                            ]
+                        }
+                    )
+                return FakeResp(
+                    {
+                        "results": [
+                            {
+                                "url": "https://cpicpgx.org/guidelines/guideline-for-clopidogrel-and-cyp2c19/",
+                                "raw_content": (
+                                    "Summary.\n\nCYP2C19 poor metabolizers: avoid clopidogrel; prasugrel or "
+                                    "ticagrelor are recommended if no contraindication (CPIC 2022)."
+                                ),
+                            }
+                        ]
+                    }
+                )
+
+            monkeypatch.setattr(requests, "post", fake_post)
+            res = watch_guideline_updates("clopidogrel", "CYP2C19")
+            assert res["execution_mode"] == "live_tavily_watch"
+            assert res["result_count"] == 1
+            assert res["sources"][0]["url"].startswith("https://cpicpgx.org/")
+            assert res["passage"]["source"] == "tavily_extract"
+            assert res["passage"]["canonical_source"] is True
+            assert res["passage"]["fallback_used"] is False
+            assert "cyp2c19" in res["passage"]["text"].lower()
+            assert len(res["fingerprint"]) == 64
+            assert calls[0]["headers"]["Authorization"] == "Bearer tvly-test-key"
+
+    def test_guideline_watch_falls_back_to_pmc_when_publisher_blocks_extract(self, monkeypatch):
+        import requests
+
+        with tempfile.TemporaryDirectory() as tmp:
+            monkeypatch.setattr(config, "DATA_DIR", tmp)
+            monkeypatch.setattr(config, "HELIX_DATA_DIR", tmp)
+            clients.state_store.cache_clear()
+            monkeypatch.setenv("TAVILY_API_KEY", "tvly-test-key")
+
+            class FakeResp:
+                status_code = 200
+
+                def __init__(self, payload):
+                    self._payload = payload
+
+                def raise_for_status(self):
+                    pass
+
+                def json(self):
+                    return self._payload
+
+            def fake_post(url, headers=None, json=None, timeout=None):
+                if url.endswith("/search"):
+                    return FakeResp({"results": [{"title": "CPIC page", "url": "https://cpicpgx.org/guidelines/x", "content": "c", "score": 0.9}]})
+                targets = json["urls"]  # batch extract: PMC succeeds, publisher pages fail
+                results = [
+                    {"url": u, "raw_content": "Intro.\n\nCYP2C19 poor metabolizers: recommend alternative therapy per CPIC guideline."}
+                    for u in targets
+                    if "pmc.ncbi.nlm.nih.gov" in u
+                ]
+                failed = [{"url": u, "error": "Failed to fetch url"} for u in targets if "pmc.ncbi.nlm.nih.gov" not in u]
+                return FakeResp({"results": results, "failed_results": failed})
+
+            monkeypatch.setattr(requests, "post", fake_post)
+            res = watch_guideline_updates("clopidogrel", "CYP2C19", fallback_url="https://pmc.ncbi.nlm.nih.gov/articles/PMC9287492/")
+            assert res["execution_mode"] == "live_tavily_watch"
+            assert res["extract_failed_urls"] == ["https://cpicpgx.org/guidelines/x"]
+            assert res["passage"]["fallback_used"] is True
+            assert res["passage"]["canonical_source"] is False
+            assert "poor metabolizers" in res["passage"]["text"].lower()
+
+    def test_guideline_watch_without_key_is_labelled(self, monkeypatch):
+        monkeypatch.delenv("TAVILY_API_KEY", raising=False)
+        res = watch_guideline_updates("clopidogrel", "CYP2C19")
+        assert res["execution_mode"] == "tavily_not_configured"
+        assert res["sources"] == [] and res["fingerprint"] is None
 
     def test_clinical_trials_matcher_extracts_nct_id(self, monkeypatch):
         import requests

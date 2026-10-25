@@ -1733,8 +1733,9 @@ def render_living_twin() -> None:
             with st.container(border=True):
                 st.subheader(":material/monitor_heart: Step 6 · Always-On HL7 FHIR R4 `MedicationRequest` Watcher")
                 st.caption(
-                    "The Helixstreet **Living Twin** watches incoming **HL7 FHIR R4 `MedicationRequest`** and **CPIC/DPWG guideline updates** "
-                    "unprompted — intercepting adverse drug reactions months or years after initial sequencing."
+                    "The Helixstreet **Living Twin** watches incoming **HL7 FHIR R4 `MedicationRequest`** (Stream A) and "
+                    "**the governing CPIC/DPWG guideline source via Tavily Search + Extract** (Stream B) unprompted — "
+                    "intercepting adverse drug reactions months or years after initial sequencing."
                 )
                 f_col1, f_col2 = st.columns(2)
                 fhir_drug_choice = f_col1.selectbox(
@@ -1795,19 +1796,24 @@ def render_living_twin() -> None:
                         st.rerun()
 
                 if b_w2.button(
-                    "📚 Stream B: Simulate CPIC Guideline Update",
+                    "📚 Stream B: Live CPIC/DPWG Guideline Watch (Tavily)",
                     icon=":material/update:",
                     width="stretch",
+                    help=(
+                        "Tavily Search restricted to the guideline publishers (cpicpgx.org · clinpgx.org · pharmgkb.org · "
+                        "knmp.nl), ranked to prefer the canonical CPIC guideline page, Tavily Extract of the guideline text (PubMed Central fallback when the publisher blocks fetching), SHA-256 "
+                        "fingerprint compared with the previous check, then the sealed phenotype is re-evaluated. "
+                        "Falls back to a clearly labelled simulated revision when no live source is available."
+                    ),
                 ):
                     allow_llm = fhir_nemotron and bool(fleet_config.NEBIUS_API_KEY)
                     if allow_llm:
                         q_chk = clients.consume_llm_quota(1, reason="guideline_watcher")
                         if not q_chk["allowed"]:
                             allow_llm = False
-                    with st.spinner("Living Twin re-evaluating static sealed genome against newly published CPIC/DPWG guideline…"):
+                    with st.spinner("Tavily Search (CPIC · ClinPGx · DPWG) → Tavily Extract → fingerprint diff → re-evaluating the sealed phenotype…"):
                         cv.ingest_guideline_update(
                             patient_id="pgx-demo-001",
-                            gene="CYP2C19",
                             drug=fhir_drug_choice[0],
                             use_nemotron=allow_llm,
                         )
@@ -1815,13 +1821,41 @@ def render_living_twin() -> None:
 
                 if alerts_list:
                     latest_alert = alerts_list[0]
-                    st.error(
-                        f"🚨 **UNPROMPTED LIVING TWIN INTERACTION INTERCEPTED (`{latest_alert.get('alert_id')}`)**  \n"
-                        f"**Incoming FHIR Order:** `{latest_alert.get('prescribed_drug','').upper()}` — *{latest_alert.get('prescribed_dose')}* "
-                        f"(Prescriber: {latest_alert.get('prescriber')})  \n"
-                        f"**Persistent Twin Memory Match:** `{latest_alert.get('gene')} {latest_alert.get('diplotype')}` → **{latest_alert.get('phenotype')}**  \n"
-                        f"**Actionability ({latest_alert.get('guideline_version')}, Level {latest_alert.get('evidence_level')}):** {latest_alert.get('actionability')}"
-                    )
+                    is_guideline_alert = latest_alert.get("trigger_type") == "PROACTIVE_LIVING_TWIN_GUIDELINE_UPDATE_WATCHER"
+                    if is_guideline_alert:
+                        g_mode = latest_alert.get("execution_mode", "caller_supplied_update")
+                        g_changed = latest_alert.get("guideline_changed_since_last_check")
+                        (st.warning if g_mode == "simulated_guideline_update" else st.error)(
+                            f"📚 **LIVING TWIN GUIDELINE WATCH (`{latest_alert.get('alert_id')}`) · `{g_mode}`**  \n"
+                            f"**Source:** {latest_alert.get('guideline_update_version')}  \n"
+                            f"**Changed since last check:** `{g_changed}` · fingerprint `{(latest_alert.get('guideline_fingerprint') or '—')[:16]}`  \n"
+                            f"**Persistent Twin Memory Match:** `{latest_alert.get('gene')} {latest_alert.get('diplotype')}` → **{latest_alert.get('phenotype')}**  \n"
+                            f"**{latest_alert.get('severity')}** — {latest_alert.get('actionability')}"
+                        )
+                        for src in (latest_alert.get("guideline_sources") or [])[:3]:
+                            st.markdown(
+                                f"- :violet-badge[Tavily Search] [{src.get('title')}]({src.get('url')}) — {src.get('snippet','')[:160]}  \n"
+                                f"  :gray[retrieved=`{src.get('retrieved_at','')}`]"
+                            )
+                        g_passage = latest_alert.get("guideline_passage") or {}
+                        if g_passage.get("text"):
+                            st.info(
+                                f"**Verbatim passage (Tavily Extract)** · [{g_passage.get('url','')}]({g_passage.get('url','')}) "
+                                f"· retrieved `{g_passage.get('retrieved_at','')}`\n\n{g_passage['text']}"
+                            )
+                            if g_passage.get("fallback_used"):
+                                st.caption(
+                                    "The publisher page blocks automated fetching, so the passage was extracted from the "
+                                    "CPIC publication on PubMed Central (the Knowledge Graph's guideline_url)."
+                                )
+                    else:
+                        st.error(
+                            f"🚨 **UNPROMPTED LIVING TWIN INTERACTION INTERCEPTED (`{latest_alert.get('alert_id')}`)**  \n"
+                            f"**Incoming FHIR Order:** `{latest_alert.get('prescribed_drug','').upper()}` — *{latest_alert.get('prescribed_dose')}* "
+                            f"(Prescriber: {latest_alert.get('prescriber')})  \n"
+                            f"**Persistent Twin Memory Match:** `{latest_alert.get('gene')} {latest_alert.get('diplotype')}` → **{latest_alert.get('phenotype')}**  \n"
+                            f"**Actionability ({latest_alert.get('guideline_version')}, Level {latest_alert.get('evidence_level')}):** {latest_alert.get('actionability')}"
+                        )
                     st.markdown(f"**Primary Recommendation:** {latest_alert.get('recommendation')}")
                     st.dataframe(pd.DataFrame(latest_alert.get("ranked_alternatives", [])), hide_index=True, width="stretch")
                     st.caption(f"**Guideline summary:** {latest_alert.get('guideline_summary')}")

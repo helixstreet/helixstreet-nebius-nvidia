@@ -1221,25 +1221,37 @@ def list_rwe_outcomes(patient_id: str = "pgx-demo-001") -> list[dict[str, Any]]:
     return items
 
 
+_SIMULATED_GUIDELINE_VERSION = "Simulated CPIC/DPWG guideline revision (no live source available)"
+_SIMULATED_GUIDELINE_SUMMARY = (
+    "Simulated scenario: a revised Level-1A recommendation for this drug-gene pair is "
+    "re-evaluated against the patient's sealed phenotype. No live guideline source was "
+    "retrieved (Tavily not configured or no recent hit), so this alert is illustrative."
+)
+
+
 def ingest_guideline_update(
     patient_id: str = "pgx-demo-001",
     gene: str = "CYP2C19",
     drug: str = "clopidogrel",
-    new_guideline_version: str = "CPIC/DPWG 2026.10 Harmonized Neurovascular & Antiplatelet Update",
-    change_summary: str = (
-        "Harmonized CPIC & European DPWG Level-1A upgrade: extends mandatory CYP2C19 *2/*2 and *1/*2 "
-        "clopidogrel avoidance to minor ischemic stroke / TIA secondary prevention in addition to ACS/PCI."
-    ),
+    new_guideline_version: str | None = None,
+    change_summary: str | None = None,
     use_nemotron: bool = False,
 ) -> dict[str, Any]:
-    """Second moving stream of the Living Twin (`POST /guidelines/update`):
-    When CPIC/DPWG publishes a new guideline version, the Living Twin re-evaluates
-    the patient's static sealed genome and medication history unprompted and
-    emits a signed Guideline Update Alert."""
+    """Second moving stream of the Living Twin (`POST /guidelines/update`).
+
+    Without a caller-supplied version, the Living Twin runs a LIVE guideline watch:
+    a domain-restricted Tavily Search for the governing guideline source (CPIC,
+    ClinPGx / PharmGKB, DPWG) plus Tavily Extract of the canonical page, fingerprints the retrieved passage
+    and compares it with the previous check for this drug-gene pair, then re-evaluates
+    the patient's sealed phenotype and emits a signed Guideline Watch Alert whose
+    `execution_mode` is `live_tavily_watch`, `simulated_guideline_update` (no live
+    source) or `caller_supplied_update` (explicit webhook payload)."""
     seed_living_twin_defaults()
     kg = query_knowledge_graph(drug)
     if not kg.get("found"):
         kg = query_knowledge_graph("clopidogrel")
+    if gene and gene.strip().upper() != kg["gene"]:
+        gene = kg["gene"]
 
     pheno = _compute_vault_phenotype(patient_id, kg["gene"])
     if pheno.get("status") != "ok":
@@ -1254,11 +1266,72 @@ def ingest_guideline_update(
     now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
     alert_id = f"alt-gdl-{kg['drug'][:5]}-{secrets.token_hex(3)}"
 
+    watch: dict[str, Any] = {}
+    execution_mode = "caller_supplied_update"
+    changed: bool | None = None
+    previous_check: str | None = None
+    if not new_guideline_version:
+        from .pharmacogenomics import watch_guideline_updates
+
+        watch = watch_guideline_updates(kg["drug"], kg["gene"], fallback_url=kg.get("guideline_url", ""))
+        if watch.get("sources"):
+            top = watch["sources"][0]
+            execution_mode = "live_tavily_watch"
+            new_guideline_version = f"{top['title']} — {top['url']}"[:240]
+            change_summary = (
+                (watch.get("passage") or {}).get("text")
+                or top.get("snippet")
+                or "New guideline source detected for this drug-gene pair."
+            )
+            ref = (
+                clients.state_store()
+                .collection(config.COLL_GUIDELINE_WATCH)
+                .document(f"{kg['drug']}|{kg['gene']}".lower().replace("/", "_"))
+            )
+            prev_snap = ref.get()
+            previous = prev_snap.to_dict() if prev_snap.exists else None
+            previous_check = previous.get("checked_at") if previous else None
+            changed = previous is None or previous.get("fingerprint") != watch.get("fingerprint")
+            ref.set(
+                {
+                    "drug": kg["drug"],
+                    "gene": kg["gene"],
+                    "fingerprint": watch.get("fingerprint"),
+                    "previous_fingerprint": previous.get("fingerprint") if previous else None,
+                    "top_url": top.get("url"),
+                    "checked_at": watch.get("checked_at", now_iso),
+                    "result_count": watch.get("result_count", 0),
+                }
+            )
+        else:
+            execution_mode = "simulated_guideline_update"
+            new_guideline_version = _SIMULATED_GUIDELINE_VERSION
+            change_summary = _SIMULATED_GUIDELINE_SUMMARY
+    change_summary = change_summary or _SIMULATED_GUIDELINE_SUMMARY
+
+    if execution_mode == "live_tavily_watch" and changed is False:
+        severity = "NO CHANGE SINCE LAST CHECK — SEALED PHENOTYPE RE-EVALUATED AGAINST CURRENT GUIDELINE"
+    elif execution_mode == "live_tavily_watch":
+        severity = "ACTIONABLE — NEW OR CHANGED GUIDELINE SOURCE MATCHES SEALED PHENOTYPE"
+    elif execution_mode == "simulated_guideline_update":
+        severity = "SIMULATED — ILLUSTRATIVE GUIDELINE REVISION (NO LIVE SOURCE)"
+    else:
+        severity = "ACTIONABLE — NEW GUIDELINE VERSION MATCHES SEALED PHENOTYPE"
+
     alert_payload = {
         "alert_id": alert_id,
         "trigger_type": "PROACTIVE_LIVING_TWIN_GUIDELINE_UPDATE_WATCHER",
+        "execution_mode": execution_mode,
         "guideline_update_version": new_guideline_version,
-        "guideline_change_summary": change_summary,
+        "guideline_change_summary": change_summary[:1200],
+        "guideline_sources": (watch.get("sources") or [])[:5],
+        "guideline_passage": watch.get("passage") or {},
+        "guideline_fingerprint": watch.get("fingerprint"),
+        "guideline_changed_since_last_check": changed,
+        "guideline_previous_check": previous_check,
+        "guideline_watch_query": watch.get("query"),
+        "guideline_watch_domains": watch.get("include_domains") or [],
+        "guideline_extract_failed_urls": watch.get("extract_failed_urls") or [],
         "patient_id": patient_id,
         "patient_pseudonym": f"did:helix:ch:{patient_id}",
         "genome_commitment_root": pheno["genome_commitment_root"],
@@ -1271,13 +1344,13 @@ def ingest_guideline_update(
         "gene": kg["gene"],
         "diplotype": pheno["diplotype"],
         "phenotype": pheno["phenotype_label"],
-        "severity": "ACTIONABLE — NEW GUIDELINE VERSION MATCHES SEALED PHENOTYPE",
+        "severity": severity,
         "actionability": kg["actionability"],
         "guideline": kg["guideline"],
         "guideline_version": new_guideline_version,
         "dpwg_concordance": kg["dpwg_concordance"],
         "evidence_level": kg["evidence_level"],
-        "recommendation": f"[{new_guideline_version}] {change_summary} Primary action: {kg['primary_recommendation']}",
+        "recommendation": f"[{new_guideline_version}] {change_summary[:400]} Primary action: {kg['primary_recommendation']}",
         "ranked_alternatives": kg["ranked_alternatives"],
         "guideline_summary": kg["guideline_summary"],
         "created_at": now_iso,
@@ -1302,8 +1375,9 @@ def ingest_guideline_update(
     record_audit_event(
         "helixstreet_living_twin_watcher",
         "LIVING_TWIN_GUIDELINE_UPDATE_FLAGGED",
-        f"[{alert_id}] Unprompted Living Twin re-evaluation on {new_guideline_version} for {patient_id}: "
-        f"{kg['gene']} {pheno['diplotype']} ({pheno['phenotype_label']}) -> {kg['actionability']}.",
+        f"[{alert_id}] ({execution_mode}) Unprompted Living Twin re-evaluation on {new_guideline_version[:160]} "
+        f"for {patient_id}: {kg['gene']} {pheno['diplotype']} ({pheno['phenotype_label']}) -> {kg['actionability']}. "
+        f"sources={len(watch.get('sources') or [])} changed_since_last_check={changed}",
     )
     return full_alert
 

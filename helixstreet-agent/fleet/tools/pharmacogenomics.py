@@ -318,103 +318,217 @@ def _trim_passage(text: str, limit: int = 900) -> str:
     return (cut[:idx] if idx > 0 else cut).rstrip(",;: ") + " …"
 
 
-def fetch_guideline_passage_tavily(url: str, phenotype_keyword: str = "poor") -> dict:
-    """Extracts a Verbatim passage (Tavily Extract) from a CPIC/regulatory URL
-    using the Tavily Extract API (`POST https://api.tavily.com/extract`,
-    `extract_depth: "advanced"`), cached for 24 hours in the Memory Bank.
+def _select_passage(raw_content: str, keyword: str) -> str:
+    """Picks the most recommendation-like paragraph mentioning `keyword` from extracted
+    guideline text: skips headings and very short lines, prefers paragraphs that also
+    talk about recommendations / dosing / metabolizer status, then trims at a sentence."""
+    paras = [
+        re.sub(r"\s+", " ", p).strip()
+        for p in re.split(r"\n\s*\n|\r\n\s*\r\n", raw_content or "")
+        if len(p.strip()) >= 50
+    ]
+    if not paras:
+        return _trim_passage(raw_content or "", 900)
+    body = [p for p in paras if not p.startswith("#") and len(p) >= 160] or paras
+    kw = (keyword or "poor").lower()
+    tiers = (
+        lambda p: kw in p and "metabolizer" in p and any(t in p for t in ("recommend", "dosing", "dose")),
+        lambda p: kw in p and any(t in p for t in ("recommend", "dosing", "dose", "metabolizer")),
+        lambda p: kw in p,
+        lambda p: "guideline" in p or "cpic" in p,
+    )
+    for cond in tiers:
+        for p in body:
+            if cond(p.lower()):
+                return _trim_passage(p, 900)
+    return _trim_passage(body[0], 900)
 
-    Args:
-        url: Official guideline URL (e.g. https://cpicpgx.org/guidelines/...).
-        phenotype_keyword: Keyword used to select the relevant recommendation paragraph.
 
-    Returns:
-        Dict with keys `text`, `url`, `retrieved_at`, `source` ("tavily_extract"),
-        or empty dict if unavailable.
-    """
+def _cache_id(url: str, keyword: str) -> str:
+    return hashlib.sha256(f"{url}|{(keyword or '').lower()}".encode("utf-8")).hexdigest()[:32]
+
+
+def extract_guideline_passages(urls: list[str], keyword: str = "poor") -> dict[str, dict]:
+    """Tavily Extract (`POST https://api.tavily.com/extract`, `extract_depth: "advanced"`)
+    for several URLs in ONE request, with a 24-hour per-URL cache in the Memory Bank.
+    Returns `{url: passage}` only for URLs whose text could be extracted; publisher
+    sites that block automated fetching simply do not appear in the result."""
     import requests
 
-    if not url:
-        return {}
-
-    cache_id = hashlib.sha256(f"{url}|{(phenotype_keyword or '').lower()}".encode("utf-8")).hexdigest()[:32]
+    out: dict[str, dict] = {}
+    pending: list[str] = []
     now = datetime.datetime.now(datetime.timezone.utc)
-    try:
-        snap = clients.state_store().collection(config.COLL_TAVILY_CACHE).document(cache_id).get()
-        if snap.exists:
-            cached = snap.to_dict()
-            ts_str = cached.get("retrieved_at", "")
-            if ts_str:
-                try:
+    for url in [u for u in urls if u]:
+        try:
+            snap = clients.state_store().collection(config.COLL_TAVILY_CACHE).document(_cache_id(url, keyword)).get()
+            if snap.exists:
+                cached = snap.to_dict()
+                ts_str = cached.get("retrieved_at", "")
+                if ts_str and cached.get("text"):
                     cached_dt = datetime.datetime.fromisoformat(ts_str)
-                    if (now - cached_dt).total_seconds() < 86400 and cached.get("text"):
-                        return cached
-                except ValueError:
-                    pass
-    except Exception as exc:
-        log.debug("Tavily extract cache read skipped: %s", exc)
+                    if (now - cached_dt).total_seconds() < 86400:
+                        out[url] = cached
+                        continue
+        except Exception as exc:
+            log.debug("Tavily extract cache read skipped: %s", exc)
+        pending.append(url)
 
     api_key = os.getenv("TAVILY_API_KEY", "").strip()
-    if not api_key:
-        return {}
-
+    if not pending or not api_key:
+        return out
     try:
         resp = requests.post(
             "https://api.tavily.com/extract",
-            headers={
-                "Authorization": f"Bearer {api_key}",
-                "Content-Type": "application/json",
-            },
-            json={
-                "urls": [url],
-                "extract_depth": "advanced",
-            },
-            timeout=18,
+            headers={"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"},
+            json={"urls": pending, "extract_depth": "advanced"},
+            timeout=40,
         )
         resp.raise_for_status()
-        results = resp.json().get("results", [])
-        if not results:
-            return {}
-        raw_content = (results[0].get("raw_content") or "").strip()
+        results = resp.json().get("results", []) or []
+    except Exception as exc:
+        log.warning("Tavily extract failed for %d url(s): %s", len(pending), exc)
+        return out
+
+    def _norm(u: str) -> str:
+        return (u or "").strip().rstrip("/").lower()
+
+    by_url = {_norm(r.get("url", "")): r for r in results}
+    for url in pending:
+        res = by_url.get(_norm(url))
+        raw_content = (res.get("raw_content") or "").strip() if res else ""
         if not raw_content:
-            return {}
-
-        paragraphs = [
-            re.sub(r"\s+", " ", p).strip()
-            for p in re.split(r"\n\s*\n|\r\n\s*\r\n", raw_content)
-            if len(p.strip()) >= 50
-        ]
-        if not paragraphs:
-            paragraphs = [re.sub(r"\s+", " ", raw_content)[:600]]
-
-        kw = (phenotype_keyword or "poor").lower()
-        chosen = None
-        for p in paragraphs:
-            pl = p.lower()
-            if kw in pl and ("metabolizer" in pl or "dosing" in pl or "recommend" in pl or "guideline" in pl or "cpic" in pl):
-                chosen = p
-                break
-        if not chosen:
-            for p in paragraphs:
-                if kw in p.lower() or "guideline" in p.lower() or "cpic" in p.lower():
-                    chosen = p
-                    break
-        if not chosen:
-            chosen = paragraphs[0]
-
+            continue
         passage = {
-            "text": _trim_passage(chosen, 900),
-            "url": results[0].get("url") or url,
+            "text": _select_passage(raw_content, keyword),
+            "url": res.get("url") or url,
             "retrieved_at": now.isoformat(),
             "source": "tavily_extract",
         }
+        out[url] = passage
         try:
-            clients.state_store().collection(config.COLL_TAVILY_CACHE).document(cache_id).set(passage)
+            clients.state_store().collection(config.COLL_TAVILY_CACHE).document(_cache_id(url, keyword)).set(passage)
         except Exception as exc:
             log.debug("Tavily extract cache write skipped: %s", exc)
-        return passage
-    except Exception as e:
-        log.warning("Tavily extract failed for %s: %s", url, e)
+    return out
+
+
+def fetch_guideline_passage_tavily(url: str, phenotype_keyword: str = "poor") -> dict:
+    """Extracts a Verbatim passage (Tavily Extract) from one guideline URL, cached for
+    24 hours in the Memory Bank. Returns `{text, url, retrieved_at, source}` or `{}`."""
+    if not url:
         return {}
+    return extract_guideline_passages([url], phenotype_keyword).get(url, {})
+
+
+# Guideline publishers only: CPIC, ClinPGx / PharmGKB annotations and DPWG (KNMP).
+# Regulator and gene-database domains were tried and returned label PDFs / gene pages
+# that are not guideline sources, so they are deliberately excluded.
+GUIDELINE_WATCH_DOMAINS = ["cpicpgx.org", "clinpgx.org", "pharmgkb.org", "knmp.nl"]
+
+
+def _guideline_source_rank(r: dict) -> tuple:
+    """Prefers the canonical CPIC guideline HTML page, then ClinPGx/PharmGKB guideline
+    annotations, then DPWG, then anything else from the publisher domains; PDFs last."""
+    url = (r.get("url") or "").lower()
+    if "cpicpgx.org/guidelines/" in url:
+        pri = 0
+    elif "clinpgx.org/guidelineannotation" in url or "pharmgkb.org/guidelineannotation" in url:
+        pri = 1
+    elif "knmp.nl" in url:
+        pri = 2
+    else:
+        pri = 3
+    return (pri, url.endswith(".pdf"), -float(r.get("score") or 0.0))
+
+
+def watch_guideline_updates(drug: str, gene: str, max_results: int = 5, fallback_url: str = "") -> dict:
+    """Live guideline watch for one drug-gene pair: a domain-restricted Tavily Search
+    for the governing guideline source (CPIC, ClinPGx / PharmGKB, DPWG), ranked to
+    prefer the canonical CPIC guideline page, then a Tavily Extract of the first
+    extractable source (publisher pages often block automated fetching, so the
+    Knowledge Graph's PubMed Central publication is tried as `fallback_url`).
+    Returns the ranked sources, the verbatim passage, which URLs could not be
+    extracted, and a SHA-256 fingerprint over the top source URL + passage text so
+    the Living Twin can tell whether the governing guideline changed since its
+    previous check. `execution_mode` is always explicit: `live_tavily_watch`,
+    `tavily_not_configured` or `tavily_error`."""
+    import requests
+
+    gene_sym = (gene or "").strip().upper()
+    drug_name = (drug or "").strip().lower()
+    query = f"CPIC guideline {drug_name} {gene_sym} dosing recommendation"
+    now_iso = datetime.datetime.now(datetime.timezone.utc).isoformat()
+    base = {
+        "execution_mode": "live_tavily_watch",
+        "drug": drug_name,
+        "gene": gene_sym,
+        "query": query,
+        "include_domains": GUIDELINE_WATCH_DOMAINS,
+        "checked_at": now_iso,
+        "sources": [],
+        "passage": {},
+        "extract_failed_urls": [],
+        "fingerprint": None,
+        "result_count": 0,
+    }
+    api_key = os.getenv("TAVILY_API_KEY", "").strip()
+    if not api_key:
+        return {**base, "execution_mode": "tavily_not_configured"}
+
+    headers = {"Authorization": f"Bearer {api_key}", "Content-Type": "application/json"}
+    payload = {
+        "query": query,
+        "search_depth": "advanced",
+        "max_results": max(1, min(int(max_results), 10)),
+        "include_domains": GUIDELINE_WATCH_DOMAINS,
+    }
+    try:
+        resp = requests.post("https://api.tavily.com/search", headers=headers, json=payload, timeout=25)
+        resp.raise_for_status()
+        results = sorted(resp.json().get("results", []) or [], key=_guideline_source_rank)
+    except Exception as exc:  # noqa: BLE001
+        log.warning("Tavily guideline watch failed for %s/%s: %s", gene_sym, drug_name, exc)
+        return {**base, "execution_mode": "tavily_error", "error": str(exc)[:200]}
+
+    sources = [
+        {
+            "title": (r.get("title") or "").strip()[:200],
+            "url": r.get("url") or "",
+            "snippet": (r.get("content") or "").strip()[:280],
+            "score": r.get("score"),
+            "published_date": r.get("published_date"),
+            "retrieved_at": now_iso,
+        }
+        for r in results
+        if r.get("url")
+    ]
+    passage: dict = {}
+    failed: list[str] = []
+    candidates = [s["url"] for s in sources[:3]]
+    if fallback_url and fallback_url not in candidates:
+        candidates.append(fallback_url)
+    extracted_all = extract_guideline_passages(candidates, gene_sym.lower()) if candidates else {}
+    for cand in candidates:
+        extracted = extracted_all.get(cand) or {}
+        if extracted.get("text"):
+            passage = {
+                **extracted,
+                "canonical_source": bool(sources) and cand == sources[0]["url"],
+                "fallback_used": cand == fallback_url,
+            }
+            break
+        failed.append(cand)
+    top_url = sources[0]["url"] if sources else ""
+    material = f"{top_url}|{passage.get('text', '')}" if (top_url or passage) else ""
+    fingerprint = hashlib.sha256(material.encode("utf-8")).hexdigest() if material else None
+    return {
+        **base,
+        "sources": sources,
+        "passage": passage,
+        "extract_failed_urls": failed,
+        "fingerprint": fingerprint,
+        "result_count": len(sources),
+    }
 
 
 def search_tavily_clinical_guidelines(query: str) -> list[dict]:
