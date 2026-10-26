@@ -10,8 +10,8 @@
 # Image source, first that applies:
 #   CONTAINER_IMAGE=<ref>    an image the endpoint can already pull (public, or in this project's registry)
 #   SOURCE_IMAGE=<ref>       a linux/amd64 image copied into the project's Container Registry with crane
-#                            (default when Docker is not running: the Cloud Build image tagged with the
-#                            current commit if it exists, else the image Cloud Run is serving)
+#                            (default when Docker is not running: the Cloud Build image of the newest
+#                            commit that has one, else the image Cloud Run is serving)
 #   a running Docker daemon  docker buildx build --platform linux/amd64 --push
 #
 # Secrets come from ~/.nebius/credentials.env, .env and .env.deploy.local (same files as
@@ -126,7 +126,7 @@ else
     if $USE_DOCKER; then
       echo "    would build linux/amd64 with docker buildx and push $ENDPOINT_IMAGE"
     else
-      echo "    would copy ${SOURCE_IMAGE:-<the Cloud Build image of the current commit, else the image Cloud Run is serving>} to $ENDPOINT_IMAGE with crane $(command -v crane >/dev/null && echo '(installed)' || echo '(MISSING: brew install crane)')"
+      echo "    would copy ${SOURCE_IMAGE:-<the Cloud Build image of the newest commit that has one, else the image Cloud Run is serving>} to $ENDPOINT_IMAGE with crane $(command -v crane >/dev/null && echo '(installed)' || echo '(MISSING: brew install crane)')"
     fi
   else
     "$NEBIUS_BIN" registry configure-helper >/dev/null   # docker credential helper for cr.<region>.nebius.cloud
@@ -138,12 +138,13 @@ else
       command -v crane >/dev/null || { echo "ERROR: crane is required to copy an image without Docker (brew install crane)." >&2; exit 1; }
       AR_REPO="us-central1-docker.pkg.dev/${GCP_PROJECT:-helixstreet-agent}/cloud-run-source-deploy/helixstreet-nebius"
       gcloud auth configure-docker "${AR_REPO%%/*}" --quiet >/dev/null 2>&1 || true
-      HEAD_SHA="$(git -C "$REPO_ROOT" rev-parse --short HEAD 2>/dev/null || true)"
-      if [[ -n "${SOURCE_IMAGE:-}" ]]; then
-        SRC="$SOURCE_IMAGE"
-      elif [[ -n "$HEAD_SHA" ]] && crane manifest "${AR_REPO}:${HEAD_SHA}" >/dev/null 2>&1; then
-        SRC="${AR_REPO}:${HEAD_SHA}"   # built with: gcloud builds submit --tag ${AR_REPO}:${HEAD_SHA} .
-      else
+      SRC="${SOURCE_IMAGE:-}"
+      if [[ -z "$SRC" ]]; then   # newest commit that has a Cloud Build image (gcloud builds submit --tag ${AR_REPO}:<sha> .)
+        for SHA in $(git -C "$REPO_ROOT" log --format=%h -n 25 2>/dev/null); do
+          if crane manifest "${AR_REPO}:${SHA}" >/dev/null 2>&1; then SRC="${AR_REPO}:${SHA}"; break; fi
+        done
+      fi
+      if [[ -z "$SRC" ]]; then   # else the image Cloud Run is serving
         SRC="$(gcloud run services describe "${CLOUD_RUN_SERVICE:-helixstreet-nebius}" --region "${CLOUD_RUN_REGION:-us-central1}" --format 'value(spec.template.spec.containers[0].image)')"
       fi
       TAG="src-$(crane digest "$SRC" | cut -c8-19)"
