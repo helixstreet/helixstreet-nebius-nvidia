@@ -75,12 +75,18 @@ items = d.get("items", d) if isinstance(d, dict) else d
 hits = 0
 for it in items:
     txt = json.dumps(it).lower()
-    if not any(k in txt for k in ("compute.instance", "cpu-d3", "vcpu", "public_ip", "public-ip", "allocation")):
+    if not any(k in txt for k in ("compute.instance", "vpc.allocation", "ipv4-address.public", "registry.count")):
         continue
     md, sp, st = it.get("metadata", {}), it.get("spec", {}), it.get("status", {})
-    name = md.get("name") or md.get("id") or sp.get("quota_name") or "?"
-    print(f"    {name}: limit={sp.get(\"limit\", sp.get(\"quota\"))} region={sp.get(\"region\", \"-\")} usage={st.get(\"usage\", \"?\")}")
+    name = md.get("name") or md.get("id") or "?"
+    limit = sp.get("limit", "default")
+    region = sp.get("region", "-")
+    usage = st.get("usage", "-")
+    print(f"    {name}: limit={limit} region={region} usage={usage}")
     hits += 1
+    if name in ("compute.instance.count", "compute.instance.non-gpu.vcpu") and str(limit) == "0":
+        print(f"    !! {name} is 0: request an increase in the console (Administration -> Limits -> Quotas, admin role),")
+        print("       the endpoint needs compute.instance.count >= 1 (project) and compute.instance.non-gpu.vcpu >= vCPUs of the preset (tenant).")
 if not hits:
     print("    (no matching quota rows; inspect: nebius quotas quota-allowance list --parent-id <project> --format yaml)")
 ' || echo "    (quota listing unavailable; continuing)"
