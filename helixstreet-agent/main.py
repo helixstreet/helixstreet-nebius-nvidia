@@ -363,6 +363,26 @@ def _mark_run_queued(uid: str, pipeline_name: str, bucket: str, name: str) -> No
         log.debug("Could not record QUEUED stage for %s: %s", uid, exc)
 
 
+def _mark_analysis_started(uid: str, bucket: str, name: str) -> None:
+    """Records that variant calling is over and the analysis fleet is starting, so the
+    Command Center banner stops reading VARIANT_CALLING_RUNNING while the analyst and
+    pharmacist reason over the VCF (neither of them owns update_pipeline_state)."""
+    try:
+        clients.state_store().collection(config.COLL_STATE).document(uid).set(
+            {
+                "stage": "ANALYSIS_RUNNING",
+                "details": (
+                    f"Variant calls landed at s3://{bucket}/{name} ({vc.parabricks_execution_mode()}); "
+                    f"{analysis_pipeline.name} is annotating and interpreting them."
+                ),
+                "updated": clients.SERVER_TIMESTAMP,
+            },
+            merge=True,
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.debug("Could not record ANALYSIS_RUNNING stage for %s: %s", uid, exc)
+
+
 def _vcf_ready_prompt(uid: str, bucket: str, name: str) -> str:
     return (
         f"VCF_READY event. user_id: {uid}. "
@@ -391,6 +411,7 @@ async def _chain_analysis_after_ingest(uid: str, bucket: str):
     if _already_processed(bucket, name, generation):
         return None
     log.info("Chaining %s for %s on s3://%s/%s (gen %s)", analysis_pipeline.name, uid, bucket, name, generation)
+    _mark_analysis_started(uid, bucket, name)
     try:
         return await run_pipeline(analysis_pipeline, uid, _vcf_ready_prompt(uid, bucket, name))
     except Exception:

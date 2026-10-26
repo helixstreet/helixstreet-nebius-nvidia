@@ -25,7 +25,8 @@ from fleet.tools.memory import (
     save_digital_twin,
     update_pipeline_state,
 )
-from fleet.tools.storage import fingerprint_gcs_object, read_gcs_text, write_gcs_text
+from fleet.tools import storage as storage_tools
+from fleet.tools.storage import fingerprint_storage_object, read_storage_text, write_storage_text
 from fleet.tools.variant_calling import _DEMO_NA12878_VCF
 
 
@@ -42,10 +43,13 @@ class TestNemotronModelTiers:
         tool_names = [t.__name__ for t in agents.intake_agent.tools]
         assert tool_names == [
             "deidentify_manifest",
-            "fingerprint_gcs_object",
+            "fingerprint_storage_object",
             "record_audit_event",
         ]
-        assert "read_gcs_text" not in tool_names
+        assert "read_storage_text" not in tool_names
+        # The Google Cloud era names survive only as import aliases, never as agent tools.
+        assert storage_tools.fingerprint_gcs_object is fingerprint_storage_object
+        assert not any("gcs" in name for name in tool_names)
 
     def test_healthz_exposes_nebius_models_and_pricing(self):
         h = main.healthz()
@@ -74,7 +78,7 @@ class TestNebiusLlmAdapter:
         assert msgs[1] == {"role": "user", "content": "Analyze chr20 VCF"}
 
     def test_converts_function_call_and_response_roundtrip(self):
-        fc_part = types.Part.from_function_call(name="parse_vcf", args={"vcf_gcs_uri": "s3://b/x.vcf"})
+        fc_part = types.Part.from_function_call(name="parse_vcf", args={"vcf_uri": "s3://b/x.vcf"})
         fr_part = types.Part.from_function_response(
             name="parse_vcf", response={"pass_variants": 72}
         )
@@ -132,8 +136,8 @@ class TestNebiusStorageAndMemoryBank:
                     "sample_id": "u-test",
                 }
             )
-            write_gcs_text(uri, raw_manifest)
-            assert "Jane Doe" in read_gcs_text(uri)
+            write_storage_text(uri, raw_manifest)
+            assert "Jane Doe" in read_storage_text(uri)
 
             verdict = screen_manifest_text(raw_manifest)
             assert verdict["verdict"] == "clean"
@@ -148,7 +152,7 @@ class TestNebiusStorageAndMemoryBank:
             assert "[DATE_OF_BIRTH]" in deid["redacted_text"]
             assert "[EMAIL_ADDRESS]" in deid["redacted_text"]
             assert "[MEDICAL_RECORD_NUMBER]" in deid["redacted_text"]
-            assert "[PERSON_NAME]" in read_gcs_text(deid["scrubbed_uri"])
+            assert "[PERSON_NAME]" in read_storage_text(deid["scrubbed_uri"])
 
             # Verify double-escaped JSON strings and free-text MRNs are also scrubbed
             escaped = r'{\"patient_name\": \"Jane Doe\", \"date_of_birth\": \"01/01/1980\", \"note\": \"MRN: 123456\"}'
@@ -156,7 +160,7 @@ class TestNebiusStorageAndMemoryBank:
             assert "Jane Doe" not in scrubbed_esc
             assert "123456" not in scrubbed_esc
 
-            fp = fingerprint_gcs_object(uri)
+            fp = fingerprint_storage_object(uri)
             assert fp["size_bytes"] == len(raw_manifest.encode())
             assert len(fp["sha256"]) == 64
 
@@ -172,7 +176,7 @@ class TestNebiusStorageAndMemoryBank:
 
             # Stage a VCF for u-test so save_digital_twin deterministically seals genome_vault
             vcf_uri = f"s3://{config.DATA_BUCKET}/uploads/u-test/panel.vcf"
-            write_gcs_text(vcf_uri, _DEMO_NA12878_VCF)
+            write_storage_text(vcf_uri, _DEMO_NA12878_VCF)
             res = save_digital_twin("u-test", json.dumps({"variants_called": 24, "genome_commitment_root": "wrong-sha"}))
             assert "SUCCESS" in res
             saved_twin = clients.state_store().collection(config.COLL_TWINS).document("u-test").get().to_dict()["twin"]
@@ -196,7 +200,7 @@ class TestNebiusStorageAndMemoryBank:
             clients.storage.cache_clear()
 
             with pytest.raises(ValueError):
-                write_gcs_text(f"s3://{config.DATA_BUCKET}/uploads/../secret.txt", "bad")
+                write_storage_text(f"s3://{config.DATA_BUCKET}/uploads/../secret.txt", "bad")
             with pytest.raises(ValueError):
                 clients.storage().bucket(config.DATA_BUCKET).blob("../../etc/passwd")
             with pytest.raises(ValueError):

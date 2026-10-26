@@ -22,20 +22,20 @@ def _split(uri: str) -> tuple[str, str]:
     raise AssertionError(f"not a supported storage URI (s3://, nebius://, gs://): {uri}")
 
 
-def read_gcs_text(gcs_uri: str) -> str:
+def read_storage_text(object_uri: str) -> str:
     """Reads a small text file (e.g. a patient manifest) from Object Storage.
 
     Args:
-        gcs_uri: Full s3:// or gs:// URI of the object to read.
+        object_uri: Full s3://, nebius:// or gs:// URI of the object to read.
     """
-    bucket, name = _split(gcs_uri)
+    bucket, name = _split(object_uri)
     blob = clients.storage().bucket(bucket).blob(name)
     if not blob.exists():
-        return f"ERROR: {gcs_uri} does not exist."
+        return f"ERROR: {object_uri} does not exist."
     return blob.download_as_text()[:20000]
 
 
-def fingerprint_gcs_object(gcs_uri: str) -> dict:
+def fingerprint_storage_object(object_uri: str) -> dict:
     """Computes a tamper-evident fingerprint of a genomic file in Object Storage.
 
     Returns the object's size, generation, and CRC32C/MD5 checksums, plus a full
@@ -43,14 +43,14 @@ def fingerprint_gcs_object(gcs_uri: str) -> dict:
     ledger lets any future analysis prove it derives from this exact genome.
 
     Args:
-        gcs_uri: Full s3:// or gs:// URI of the object to fingerprint.
+        object_uri: Full s3://, nebius:// or gs:// URI of the object to fingerprint.
     """
-    bucket, name = _split(gcs_uri)
+    bucket, name = _split(object_uri)
     blob = clients.storage().bucket(bucket).get_blob(name)
     if blob is None:
-        return {"error": f"{gcs_uri} does not exist."}
+        return {"error": f"{object_uri} does not exist."}
     out = {
-        "object": gcs_uri,
+        "object": object_uri,
         "size_bytes": blob.size,
         "generation": blob.generation,
         "crc32c": blob.crc32c,
@@ -61,18 +61,19 @@ def fingerprint_gcs_object(gcs_uri: str) -> dict:
     return out
 
 
-def write_gcs_text(gcs_uri: str, content: str) -> str:
+def write_storage_text(object_uri: str, content: str) -> str:
     """Writes text content (e.g. a scrubbed manifest) to Object Storage.
 
     Args:
-        gcs_uri: Full s3:// or gs:// destination URI.
+        object_uri: Full s3://, nebius:// or gs:// destination URI.
         content: The text to write.
     """
-    bucket, name = _split(gcs_uri)
+    bucket, name = _split(object_uri)
     clients.storage().bucket(bucket).blob(name).upload_from_string(content)
-    return f"SUCCESS: wrote {len(content)} bytes to {gcs_uri}."
+    return f"SUCCESS: wrote {len(content)} bytes to {object_uri}."
 
 
-read_storage_text = read_gcs_text
-fingerprint_storage_object = fingerprint_gcs_object
-write_storage_text = write_gcs_text
+# Backward-compatible aliases from the Google Cloud era of the project (not agent tools).
+read_gcs_text = read_storage_text
+fingerprint_gcs_object = fingerprint_storage_object
+write_gcs_text = write_storage_text

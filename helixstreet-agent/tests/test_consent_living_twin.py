@@ -3,6 +3,8 @@ Layer, Ed25519 Enclave Attestations, Trusted Public Key Verification, Vault-Deri
 Phenotype Calling, API Token Auth, Daily LLM Quota, and Simulated Scenarios."""
 from __future__ import annotations
 
+import json
+
 import copy
 import secrets
 
@@ -541,6 +543,7 @@ def test_bam_event_chains_analysis_after_ingest(monkeypatch):
     analysis fleet itself; the result object is claimed so a notification would be a duplicate."""
     import secrets as _secrets
 
+    from fleet.tools.memory import get_pipeline_state
     from fleet.tools.variant_calling import replay_vcf_object
 
     client = TestClient(app_main.app)
@@ -565,6 +568,12 @@ def test_bam_event_chains_analysis_after_ingest(monkeypatch):
     assert "VCF_READY event" in calls[1][2] and replay_vcf_object(uid) in calls[1][2]
     vcf = clients.storage().bucket(bucket).blob(replay_vcf_object(uid))
     assert vcf.exists()
+
+    # The hand-off itself moves the stage on, so the live banner never reads
+    # VARIANT_CALLING_RUNNING while the analyst and pharmacist are working.
+    state = json.loads(get_pipeline_state(uid))
+    assert state["stage"] == "ANALYSIS_RUNNING"
+    assert replay_vcf_object(uid) in state["details"] and "replay_fixture" in state["details"]
 
     # The chained result object is claimed exactly like a storage notification would be.
     r_dup = client.post(

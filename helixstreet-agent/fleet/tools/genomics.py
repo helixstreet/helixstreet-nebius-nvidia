@@ -192,18 +192,18 @@ _CURATED_1000G: dict[str, list[dict]] = {
 }
 
 
-def parse_vcf(vcf_gcs_uri: str) -> dict:
+def parse_vcf(vcf_uri: str) -> dict:
     """Parses a (bgzipped) VCF produced by DeepVariant and summarizes the calls.
 
     Args:
-        vcf_gcs_uri: gs:// or s3:// URI of the .vcf or .vcf.gz file.
+        vcf_uri: gs:// or s3:// URI of the .vcf or .vcf.gz file.
 
     Returns:
         Call statistics and a capped list of PASS variants with genotypes.
     """
     import hashlib
 
-    bucket, name = _split(vcf_gcs_uri)
+    bucket, name = _split(vcf_uri)
     raw = clients.storage().bucket(bucket).blob(name).download_as_bytes()
     sha256 = hashlib.sha256(raw).hexdigest()  # fingerprint of the stored artifact
     if name.endswith(".gz"):
@@ -211,7 +211,7 @@ def parse_vcf(vcf_gcs_uri: str) -> dict:
             raw = gzip.decompress(raw)
         except OSError:
             pass
-    summary = summarize_vcf_text(raw.decode("utf-8", errors="replace"), vcf_gcs_uri)
+    summary = summarize_vcf_text(raw.decode("utf-8", errors="replace"), vcf_uri)
     summary["sha256"] = sha256
     return summary
 

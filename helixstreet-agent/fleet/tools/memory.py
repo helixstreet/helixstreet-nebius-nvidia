@@ -110,7 +110,7 @@ def update_pipeline_state(user_id: str, stage: str, details: str) -> str:
 
     Args:
         user_id: The pipeline user/sample identifier.
-        stage: One of INTAKE_DONE, VARIANT_CALLING_RUNNING, ANALYSIS_DONE, TWIN_SAVED, FAILED.
+        stage: One of INTAKE_DONE, VARIANT_CALLING_RUNNING, ANALYSIS_RUNNING, ANALYSIS_DONE, TWIN_SAVED, FAILED.
         details: Context needed to resume, e.g. the Nebius Serverless Job ID or output URI.
     """
     clients.state_store().collection(config.COLL_STATE).document(user_id).set(

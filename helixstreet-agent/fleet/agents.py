@@ -32,7 +32,7 @@ from .tools.pharmacogenomics import (
     search_clinical_trials_tavily,
     search_literature,
 )
-from .tools.storage import fingerprint_gcs_object
+from .tools.storage import fingerprint_storage_object
 from .tools.variant_calling import (
     get_batch_job_status,
     submit_deepvariant_job,
@@ -69,7 +69,7 @@ Do ALL of the following, in order, using your tools:
 3. If the manifest was missing (status == 'missing'), record an audit event
    (action MANIFEST_MISSING) and continue to step 5.
 4. Record an audit event (action PII_SCRUBBED) naming the engine returned by deidentify_manifest.
-5. Fingerprint the raw genome with fingerprint_gcs_object on the BAM URI, then
+5. Fingerprint the raw genome with fingerprint_storage_object on the BAM URI, then
    record an audit event (action GENOME_FINGERPRINTED) containing the checksums.
    This anchors the genome's identity in the tamper-evident ledger so every
    future insight can prove which exact molecule-readout it derives from.
@@ -77,7 +77,7 @@ Finish with a one-paragraph handoff summary for the variant-calling agent,
 repeating the user_id and the BAM URI exactly as given to you.""",
     tools=[
         deidentify_manifest,
-        fingerprint_gcs_object,
+        fingerprint_storage_object,
         record_audit_event,
     ],
 )

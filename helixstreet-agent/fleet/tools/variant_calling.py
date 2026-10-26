@@ -127,7 +127,7 @@ chr20	10009883	.	A	G	25.8	PASS	.	GT:GQ:DP:AD:VAF:PL	1/1:24:50:0,50:1:25,29,0
 """
 
 
-def _gcs_to_mount(gcs_uri: str) -> str:
+def _uri_to_mount(gcs_uri: str) -> str:
     for prefix in ("gs://", "s3://", "nebius://"):
         expected = f"{prefix}{config.DATA_BUCKET}/"
         if gcs_uri.startswith(expected):
@@ -135,7 +135,7 @@ def _gcs_to_mount(gcs_uri: str) -> str:
     raise AssertionError(f"URI must live in the fleet data bucket: {gcs_uri}")
 
 
-def _build_parabricks_command(user_id: str, bam_gcs_uri: str, output_vcf_gcs: str) -> str:
+def _build_parabricks_command(user_id: str, bam_uri: str, output_vcf_uri: str) -> str:
     """Builds the GPU-accelerated NVIDIA Clara Parabricks (`pbrun deepvariant`) command.
 
     Parabricks 4.3.0-1 (`src/deepvariant_main.cpp:2069`) requires `--out-variants` to carry
@@ -143,11 +143,11 @@ def _build_parabricks_command(user_id: str, bam_gcs_uri: str, output_vcf_gcs: st
     Nebius Object Storage volume.
     """
     out_dir_mount = f"{MOUNT}/results/{user_id}/deepvariant"
-    out_vcf_mount = _gcs_to_mount(output_vcf_gcs)
+    out_vcf_mount = _uri_to_mount(output_vcf_uri)
     tmp_vcf = "/tmp/parabricks_work/output.vcf"
     flags = [
-        f"--ref {_gcs_to_mount(config.REFERENCE_FASTA)}",
-        f"--in-bam {_gcs_to_mount(bam_gcs_uri)}",
+        f"--ref {_uri_to_mount(config.REFERENCE_FASTA)}",
+        f"--in-bam {_uri_to_mount(bam_uri)}",
         f"--out-variants {tmp_vcf}",
         f"--num-gpus {config.PARABRICKS_NUM_GPUS}",
         "--tmp-dir /tmp/parabricks_work",
@@ -207,7 +207,7 @@ def ensure_replay_vcf(user_id: str, bucket: str | None = None) -> dict:
     return {"bucket": bucket_name, "object": object_name, "generation": str(blob.generation), "staged": staged}
 
 
-def submit_parabricks_job(user_id: str, bam_gcs_uri: str) -> dict:
+def submit_parabricks_job(user_id: str, bam_uri: str) -> dict:
     """Submits an asynchronous GPU-accelerated NVIDIA Clara Parabricks (`pbrun deepvariant`)
     variant-calling job to Nebius Serverless GPU Jobs (`gpu-l40s-a`), or stages the
     verified GIAB NA12878 chr20 replay fixture unless live GPU dispatch is enabled
@@ -216,7 +216,7 @@ def submit_parabricks_job(user_id: str, bam_gcs_uri: str) -> dict:
     Args:
         user_id: The pipeline user/sample identifier; output lands under
             results/{user_id}/deepvariant/ in the data bucket.
-        bam_gcs_uri: gs:// or s3:// URI of the aligned reads (.bam); the .bam.bai index
+        bam_uri: gs:// or s3:// URI of the aligned reads (.bam); the .bam.bai index
             must sit next to it.
 
     Returns:
@@ -226,7 +226,7 @@ def submit_parabricks_job(user_id: str, bam_gcs_uri: str) -> dict:
     safe_uid = re.sub(r"[^a-z0-9-]", "-", user_id.lower())[:20].strip("-")
     job_id = f"parabricks-dv-{safe_uid}-{int(time.time())}"
     output_rel = f"results/{user_id}/deepvariant/output.vcf.gz"
-    output_vcf_gcs = f"s3://{config.DATA_BUCKET}/{output_rel}"
+    output_vcf_uri = f"s3://{config.DATA_BUCKET}/{output_rel}"
     volume_spec = f"s3://{config.DATA_BUCKET}:{MOUNT}"
 
     # Ensure prefix exists in storage
@@ -234,7 +234,7 @@ def submit_parabricks_job(user_id: str, bam_gcs_uri: str) -> dict:
         f"results/{user_id}/deepvariant/.keep"
     ).upload_from_string(b"")
 
-    script = _build_parabricks_command(user_id, bam_gcs_uri, output_vcf_gcs)
+    script = _build_parabricks_command(user_id, bam_uri, output_vcf_uri)
 
     nebius_bin = _nebius_cli_path()
     if live_gpu_dispatch_enabled():
@@ -296,7 +296,7 @@ def submit_parabricks_job(user_id: str, bam_gcs_uri: str) -> dict:
                     "command": script,
                     "batch_job": job_ref,
                     "platform": f"{config.NEBIUS_GPU_PLATFORM} ({config.NEBIUS_GPU_PRESET})",
-                    "expected_output_vcf": output_vcf_gcs,
+                    "expected_output_vcf": output_vcf_uri,
                     "note": "Running NVIDIA Clara Parabricks on Nebius Serverless GPU Jobs; fleet resumes when VCF lands.",
                 }
             log.warning("nebius ai job create returned %d: %s", proc.returncode, proc.stderr[:200])
@@ -323,7 +323,7 @@ def submit_parabricks_job(user_id: str, bam_gcs_uri: str) -> dict:
         "command": script,
         "batch_job": job_ref,
         "platform": f"Nebius Serverless GPU Spec ({config.NEBIUS_GPU_PLATFORM} / {config.NEBIUS_GPU_PRESET})",
-        "expected_output_vcf": output_vcf_gcs,
+        "expected_output_vcf": output_vcf_uri,
         "note": (
             "Replaying verified NVIDIA Clara Parabricks 4.3.0-1 VCF output from Nebius L40S GPU job "
             f"{VERIFIED_NEBIUS_GPU_JOB_ID} (78 records, 72 PASS calls, 6.049s GPU runtime); the fleet chains the analysis pipeline as soon as the ingest turn ends."
@@ -331,20 +331,20 @@ def submit_parabricks_job(user_id: str, bam_gcs_uri: str) -> dict:
     }
 
 
-def submit_deepvariant_job(user_id: str, bam_gcs_uri: str) -> dict:
+def submit_deepvariant_job(user_id: str, bam_uri: str) -> dict:
     """Submits an asynchronous GPU-accelerated NVIDIA Clara Parabricks (`pbrun deepvariant`)
     variant-calling job to Nebius Serverless GPU Jobs.
 
     Args:
         user_id: The pipeline user/sample identifier; output lands under
             results/{user_id}/deepvariant/ in the data bucket.
-        bam_gcs_uri: gs:// or s3:// URI of the aligned reads (.bam); the .bam.bai index
+        bam_uri: gs:// or s3:// URI of the aligned reads (.bam); the .bam.bai index
             must sit next to it.
 
     Returns:
         The Nebius Serverless GPU Job name and expected output VCF URI.
     """
-    return submit_parabricks_job(user_id=user_id, bam_gcs_uri=bam_gcs_uri)
+    return submit_parabricks_job(user_id=user_id, bam_uri=bam_uri)
 
 
 def get_batch_job_status(batch_job_name: str) -> dict:

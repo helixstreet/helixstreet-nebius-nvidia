@@ -8,7 +8,7 @@ from .audit import record_audit_event
 from .genomics import parse_vcf
 
 
-def commit_genome(user_id: str, vcf_gcs_uri: str) -> dict:
+def commit_genome(user_id: str, vcf_uri: str) -> dict:
     """Seals a per-variant Merkle commitment to a genome so it can later answer
     single questions about itself without revealing the whole genome.
 
@@ -18,7 +18,7 @@ def commit_genome(user_id: str, vcf_gcs_uri: str) -> dict:
 
     Args:
         user_id: The pipeline user/sample identifier.
-        vcf_gcs_uri: s3:// or gs:// URI of the VCF whose genotypes are committed.
+        vcf_uri: s3:// or gs:// URI of the VCF whose genotypes are committed.
     """
     vault_ref = clients.state_store().collection(config.COLL_VAULT).document(user_id)
     existing = vault_ref.get()
@@ -40,7 +40,7 @@ def commit_genome(user_id: str, vcf_gcs_uri: str) -> dict:
                 "minimal-disclosure proofs of single genotypes without revealing the genome.",
             }
 
-    parsed = parse_vcf(vcf_gcs_uri)
+    parsed = parse_vcf(vcf_uri)
     variants = parsed.get("variants", [])
     records = []
     for v in variants:

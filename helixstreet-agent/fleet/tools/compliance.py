@@ -5,7 +5,7 @@ import logging
 import re
 from typing import Any
 
-from .storage import read_gcs_text, write_gcs_text
+from .storage import read_storage_text, write_storage_text
 
 log = logging.getLogger(__name__)
 
@@ -173,7 +173,7 @@ def deidentify_manifest(manifest_uri: str) -> dict:
         Status dict with verdict, scrubbed_uri, engine, and the already-redacted
         manifest text.
     """
-    raw = read_gcs_text(manifest_uri)
+    raw = read_storage_text(manifest_uri)
     if raw.startswith("ERROR:"):
         return {
             "status": "missing",
@@ -197,7 +197,7 @@ def deidentify_manifest(manifest_uri: str) -> dict:
     else:
         scrubbed_uri = manifest_uri + ".scrubbed.json"
 
-    write_gcs_text(scrubbed_uri, scrubbed["redacted_text"])
+    write_storage_text(scrubbed_uri, scrubbed["redacted_text"])
     return {
         "status": "scrubbed",
         "verdict": "clean",
