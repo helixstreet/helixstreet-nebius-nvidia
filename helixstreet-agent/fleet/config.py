@@ -60,6 +60,12 @@ AGENT_MODELS = {
 
 # Verified Nebius AI Cloud resource identifiers
 NEBIUS_SECRETSTASH_ID = os.getenv(
+# Nebius Serverless AI endpoint that hosts this same container (mirror of the Cloud Run demo).
+NEBIUS_ENDPOINT_ID = os.getenv("NEBIUS_ENDPOINT_ID", "aiendpoint-e01mb5sjet7c8rys8h")
+NEBIUS_ENDPOINT_URL = os.getenv("NEBIUS_ENDPOINT_URL", "https://port8080-e6d5g79dfjp897z.tunnel.applications.eu-west1.nebius.cloud")
+NEBIUS_ENDPOINT_REGION = os.getenv("NEBIUS_ENDPOINT_REGION", "eu-west1")
+NEBIUS_ENDPOINT_PLATFORM = os.getenv("NEBIUS_ENDPOINT_PLATFORM", "cpu-d3")
+NEBIUS_ENDPOINT_PRESET = os.getenv("NEBIUS_ENDPOINT_PRESET", "2vcpu-8gb")
     "NEBIUS_SECRETSTASH_ID", "mbsec-e00zxbcp465mhbrhwf"
 )
 NEBIUS_BUCKET_RESOURCE_ID = os.getenv(

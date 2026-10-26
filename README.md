@@ -8,7 +8,8 @@
 <p align="center">
   <b>Nebius x NVIDIA Global AI Hackathon Submission — Best Apps and Agents Track</b><br>
   Apache-2.0 License · Built with NVIDIA Nemotron 3 (Nano 30B · Super 120B · Ultra 550B) on Nebius Token Factory<br>
-  🌐 <b>Live Command Center Demo:</b> <a href="https://nebius.helixstreet.io">https://nebius.helixstreet.io</a>
+  🌐 <b>Live Command Center Demo:</b> <a href="https://nebius.helixstreet.io">https://nebius.helixstreet.io</a><br>
+  ☁️ <b>Same container on Nebius AI Cloud (Serverless AI endpoint, eu-west1):</b> <a href="https://port8080-e6d5g79dfjp897z.tunnel.applications.eu-west1.nebius.cloud">https://port8080-e6d5g79dfjp897z.tunnel.applications.eu-west1.nebius.cloud</a>
 </p>
 
 ---
@@ -93,6 +94,7 @@ Across our two seeded pipeline runs in `seed_data` (`demo-na12878` and `pgx-demo
 | **Nebius Serverless GPU Job** | `aijob-e00p9xmknz4yphfvmm` (`gpu-l40s-a` / `1gpu-16vcpu-64gb`) | Executed `nvcr.io/nvidia/clara/clara-parabricks:4.3.0-1` (`pbrun deepvariant`) in project `project-e00btn6gpr00s6vm81sqw7`, calling **78 variant records / 72 PASS calls** on GIAB NA12878 `chr20` in **6.049 seconds**. |
 | **Nebius Object Storage** | `s3://helixstreet-nebius-data` (`storagebucket-e008779569894118469733`) | Stores reference genome (`ucsc.hg19.chr20.unittest.fasta`), uploaded BAM/VCFs, and Parabricks outputs on `https://storage.eu-north1.nebius.cloud`. |
 | **Nebius SecretStash (formerly MysteryBox)** | `mbsec-e00zxbcp465mhbrhwf` | Injects S3 credentials into the Serverless GPU job container (`--volume s3://helixstreet-nebius-data:/mnt/nebius:rw:default@helixstreet-s3`). |
+| **Nebius Serverless AI Endpoint** | `aiendpoint-e01mb5sjet7c8rys8h` (`cpu-d3` / `2vcpu-8gb`, `eu-west1`) | Hosts this same container (Command Center + fleet API) on Nebius AI Cloud at [https://port8080-e6d5g79dfjp897z.tunnel.applications.eu-west1.nebius.cloud](https://port8080-e6d5g79dfjp897z.tunnel.applications.eu-west1.nebius.cloud), pulled from the project's Container Registry (`cr.eu-west1.nebius.cloud`); same Ed25519 enclave seed as the Cloud Run demo, so attestations verify across both hosts. |
 
 ---
 
@@ -262,13 +264,14 @@ The public demo at [https://nebius.helixstreet.io](https://nebius.helixstreet.io
 # a) Google Cloud Run (what serves nebius.helixstreet.io today; builds from source with Cloud Build)
 bash infra/deploy_cloud_run.sh
 
-# b) Nebius Serverless AI endpoint (cpu-d3 2vcpu-8gb VM in the same Nebius project as the GPU job and the bucket)
+# b) Nebius Serverless AI endpoint — live mirror: https://port8080-e6d5g79dfjp897z.tunnel.applications.eu-west1.nebius.cloud
+#    (cpu-d3 2vcpu-8gb VM in eu-west1; the bucket and the verified GPU job stay in the eu-north1 project)
 ~/.nebius/bin/nebius iam whoami              # browser login; Nebius CLI sessions expire after 12 hours
 bash infra/deploy_nebius_endpoint.sh --check # validates session, non-GPU VM quota, Container Registry, image source
 bash infra/deploy_nebius_endpoint.sh         # pushes the image (docker buildx, or crane-copies the Cloud Run image) and creates / restarts the endpoint
 ```
 
-Both scripts read `~/.nebius/credentials.env`, `.env` and `.env.deploy.local` and inject the Token Factory key, the Ed25519 enclave seed and the `X-Helix-Token` as container env vars; nothing secret is baked into the image. The Nebius endpoint needs a non-GPU VM quota of at least 1 in `eu-north1` (Serverless AI endpoints are limited and billed like Compute VMs) and exposes a managed `https://` URL without a public IP.
+Both scripts read `~/.nebius/credentials.env`, `.env` and `.env.deploy.local` and inject the Token Factory key, the Ed25519 enclave seed and the `X-Helix-Token` as container env vars; nothing secret is baked into the image. The Nebius endpoint needs a non-GPU VM quota of at least 1 in its hosting region (Serverless AI endpoints are limited and billed like Compute VMs; this tenant had it in `eu-west1`, so `NEBIUS_ENDPOINT_PARENT_ID` / `NEBIUS_ENDPOINT_REGION` / `NEBIUS_ENDPOINT_SUBNET_ID` point the script there while the container keeps using the `eu-north1` bucket) and exposes a managed `https://` URL without a public IP.
 ---
 
 ## Public Demo API & Offline Attestation Verification

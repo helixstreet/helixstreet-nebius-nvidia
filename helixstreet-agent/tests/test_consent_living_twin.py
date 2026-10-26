@@ -460,6 +460,8 @@ def test_fastapi_endpoints_and_token_auth(monkeypatch):
     assert cap_data["gpu_jobs"][0]["state"] == "COMPLETED"
     assert any(j["job_id"] == "aijob-e00p9xmknz4yphfvmm" and j["vcf_variants_pass"] == 72 for j in cap_data["gpu_jobs"])
     assert cap_data["secret"]["secret_id"] == "mbsec-e00zxbcp465mhbrhwf"
+    assert cap_data["endpoint"]["endpoint_id"].startswith("aiendpoint-")
+    assert cap_data["endpoint"]["url"].startswith("https://") and cap_data["endpoint"]["region"] == "eu-west1"
     assert len(cap_data["roadmap"]) == 3
 
     # Daily LLM quota check

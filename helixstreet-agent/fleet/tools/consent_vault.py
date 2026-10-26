@@ -2082,6 +2082,14 @@ def get_nebius_platform_usage() -> dict[str, Any]:
             "secret_id": config.NEBIUS_SECRETSTASH_ID,
             "label": "SecretStash, formerly MysteryBox",
         },
+        "endpoint": {
+            "endpoint_id": config.NEBIUS_ENDPOINT_ID,
+            "url": config.NEBIUS_ENDPOINT_URL,
+            "region": config.NEBIUS_ENDPOINT_REGION,
+            "platform": config.NEBIUS_ENDPOINT_PLATFORM,
+            "preset": config.NEBIUS_ENDPOINT_PRESET,
+            "label": "Nebius Serverless AI Endpoint (this container, Nebius-hosted mirror)",
+        },
         "roadmap": [
             "Data Lab export of consented RWE for serverless LoRA (not implemented)",
             "custom speculator training (not trained)",

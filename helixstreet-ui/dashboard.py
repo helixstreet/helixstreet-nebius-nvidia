@@ -2206,6 +2206,7 @@ def render_fleet_registry() -> None:
         gpu_info = usage["gpu_job"]
         bkt_info = usage["bucket"]
         sec_info = usage["secret"]
+        ep_info = usage["endpoint"]
         resources_df = pd.DataFrame(
             [
                 {
@@ -2235,6 +2236,14 @@ def render_fleet_registry() -> None:
                     "Nebius Resource": sec_info["label"],
                     "Identifier / Endpoint": sec_info["secret_id"],
                     "Details": "Injected into Serverless GPU container for S3 CSI volume mounting",
+                },
+                {
+                    "Nebius Resource": ep_info["label"],
+                    "Identifier / Endpoint": f"{ep_info['endpoint_id']} ({ep_info['platform']} / {ep_info['preset']}, {ep_info['region']})",
+                    "Details": (
+                        f"Hosts the Command Center + fleet API at {ep_info['url']} · "
+                        "same Ed25519 enclave key as nebius.helixstreet.io, so attestations verify across both hosts"
+                    ),
                 },
             ]
         )

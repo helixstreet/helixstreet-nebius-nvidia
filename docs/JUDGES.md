@@ -1,8 +1,8 @@
 # Helixstreet — 5-Minute Judge Guide
 
-Live demo: **https://nebius.helixstreet.io** · API explorer: **https://nebius.helixstreet.io/api/docs** · Health + enclave keys: **https://nebius.helixstreet.io/api/healthz**
+Live demo: **https://nebius.helixstreet.io** · API explorer: **https://nebius.helixstreet.io/api/docs** · Health + enclave keys: **https://nebius.helixstreet.io/api/healthz** · Same container on Nebius AI Cloud (Serverless AI endpoint, eu-west1): **https://port8080-e6d5g79dfjp897z.tunnel.applications.eu-west1.nebius.cloud**
 
-Everything below runs against the live deployment. No login is needed. Live LLM calls share a daily quota; when it is exhausted the UI says so and falls back to the deterministic guideline template (clearly labelled).
+Everything below runs against the live deployment. The Nebius-hosted mirror behaves identically (same image, same enclave key, its own run history and daily quota). No login is needed. Live LLM calls share a daily quota; when it is exhausted the UI says so and falls back to the deterministic guideline template (clearly labelled).
 
 ## The 60-second path
 
