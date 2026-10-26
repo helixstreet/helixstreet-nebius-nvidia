@@ -17,7 +17,11 @@
 # Secrets come from ~/.nebius/credentials.env, .env and .env.deploy.local (same files as
 # deploy_cloud_run.sh) and are passed as container env vars; nothing secret is written into the
 # image or the repository. Serverless AI endpoints are limited and billed like Compute VMs
-# (cpu-d3 2vcpu-8gb ~= $0.07/h), so the project needs a non-GPU VM quota of at least 1 in the region.
+# (cpu-d3 2vcpu-8gb ~= $0.07/h), so the hosting project needs compute.instance.count >= 1 and a
+# non-GPU vCPU quota in its region. The endpoint may live in another region/project than the data
+# (Nebius projects are regional): NEBIUS_ENDPOINT_PARENT_ID / NEBIUS_ENDPOINT_REGION /
+# NEBIUS_ENDPOINT_SUBNET_ID select the hosting project (default: the data project in NEBIUS_REGION),
+# while the container keeps talking to the bucket and GPU job project through NEBIUS_REGION etc.
 set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 CHECK_ONLY=false
@@ -39,7 +43,10 @@ for ENV_FILE in "$HOME/.nebius/credentials.env" "$REPO_ROOT/.env" "$REPO_ROOT/.e
 done
 : "${NEBIUS_API_KEY:?NEBIUS_API_KEY must be set (https://tokenfactory.nebius.com/)}"
 : "${NEBIUS_PARENT_ID:?NEBIUS_PARENT_ID (project-...) must be set, e.g. in ~/.nebius/credentials.env}"
-REGION="${NEBIUS_REGION:-eu-north1}"
+REGION="${NEBIUS_REGION:-eu-north1}"                                   # data bucket / GPU job region (container env)
+ENDPOINT_PARENT_ID="${NEBIUS_ENDPOINT_PARENT_ID:-$NEBIUS_PARENT_ID}"   # project that hosts the endpoint + its registry
+ENDPOINT_REGION="${NEBIUS_ENDPOINT_REGION:-$REGION}"
+ENDPOINT_SUBNET_ID="${NEBIUS_ENDPOINT_SUBNET_ID:-${NEBIUS_SUBNET_ID:-}}"
 
 SEED_HEX="${HELIX_ENCLAVE_ED25519_SEED_HEX:-}"
 if [[ -z "$SEED_HEX" && -f "$REPO_ROOT/seed_data/enclave_ed25519.seed" ]]; then
@@ -67,8 +74,8 @@ MSG
 fi
 echo "    ok ($("$NEBIUS_BIN" iam whoami --no-browser --format jsonpath='{.user_profile.attributes.email}' 2>/dev/null || echo authenticated))"
 
-echo "==> Compute quota in $NEBIUS_PARENT_ID (Serverless AI endpoints count against the non-GPU VM quotas)"
-"$NEBIUS_BIN" quotas quota-allowance list --parent-id "$NEBIUS_PARENT_ID" --all --format json 2>/dev/null \
+echo "==> Compute quota in $ENDPOINT_PARENT_ID / $ENDPOINT_REGION (Serverless AI endpoints count against the non-GPU VM quotas)"
+"$NEBIUS_BIN" quotas quota-allowance list --parent-id "$ENDPOINT_PARENT_ID" --all --format json 2>/dev/null \
   | python3 -c '
 import json, sys
 d = json.load(sys.stdin)
@@ -93,19 +100,19 @@ if not hits:
 ' || echo "    (quota listing unavailable; continuing)"
 
 echo "==> Container Registry '$REGISTRY_NAME'"
-REGISTRY_ID="$("$NEBIUS_BIN" registry get-by-name --parent-id "$NEBIUS_PARENT_ID" --name "$REGISTRY_NAME" --format jsonpath='{.metadata.id}' 2>/dev/null || true)"
+REGISTRY_ID="$("$NEBIUS_BIN" registry get-by-name --parent-id "$ENDPOINT_PARENT_ID" --name "$REGISTRY_NAME" --format jsonpath='{.metadata.id}' 2>/dev/null || true)"
 if [[ -z "$REGISTRY_ID" ]]; then
   if $CHECK_ONLY; then
     echo "    not found; the deploy will create it"
     REGISTRY_ID="registry-NEW"
   else
-    REGISTRY_ID="$("$NEBIUS_BIN" registry create --parent-id "$NEBIUS_PARENT_ID" --name "$REGISTRY_NAME" --format jsonpath='{.metadata.id}')"
+    REGISTRY_ID="$("$NEBIUS_BIN" registry create --parent-id "$ENDPOINT_PARENT_ID" --name "$REGISTRY_NAME" --format jsonpath='{.metadata.id}')"
     echo "    created $REGISTRY_ID"
   fi
 else
   echo "    found $REGISTRY_ID"
 fi
-IMAGE="cr.${REGION}.nebius.cloud/${REGISTRY_ID#registry-}/helixstreet-nebius"
+IMAGE="cr.${ENDPOINT_REGION}.nebius.cloud/${REGISTRY_ID#registry-}/helixstreet-nebius"
 
 echo "==> Image"
 if [[ -n "${CONTAINER_IMAGE:-}" ]]; then
@@ -173,12 +180,12 @@ for KV in "${ENV_ARGS[@]}"; do   # the CLI splits --env on commas; such values m
   fi
 done
 SUBNET_ARGS=()
-[[ -n "${NEBIUS_SUBNET_ID:-}" ]] && SUBNET_ARGS=(--subnet-id "$NEBIUS_SUBNET_ID")
+[[ -n "$ENDPOINT_SUBNET_ID" ]] && SUBNET_ARGS=(--subnet-id "$ENDPOINT_SUBNET_ID")
 
-EP_ID="$("$NEBIUS_BIN" ai endpoint get-by-name --parent-id "$NEBIUS_PARENT_ID" --name "$ENDPOINT_NAME" --format jsonpath='{.metadata.id}' 2>/dev/null || true)"
+EP_ID="$("$NEBIUS_BIN" ai endpoint get-by-name --parent-id "$ENDPOINT_PARENT_ID" --name "$ENDPOINT_NAME" --format jsonpath='{.metadata.id}' 2>/dev/null || true)"
 if $CHECK_ONLY; then
-  echo "==> Endpoint '$ENDPOINT_NAME': ${EP_ID:-not created yet}"
-  echo "    create: $NEBIUS_BIN ai endpoint create --parent-id $NEBIUS_PARENT_ID --name $ENDPOINT_NAME --image $ENDPOINT_IMAGE \\"
+  echo "==> Endpoint '$ENDPOINT_NAME' in $ENDPOINT_PARENT_ID ($ENDPOINT_REGION): ${EP_ID:-not created yet}"
+  echo "    create: $NEBIUS_BIN ai endpoint create --parent-id $ENDPOINT_PARENT_ID --name $ENDPOINT_NAME --image $ENDPOINT_IMAGE \\"
   echo "              --platform $PLATFORM --preset $PRESET --on-demand --disk-size $DISK_SIZE --container-port 8080 --auth none ${SUBNET_ARGS[*]:-} \\"
   echo "              + $(( ${#ENV_ARGS[@]} / 2 )) --env flags (values not shown)"
   echo "==> Check complete; nothing was changed."
@@ -187,10 +194,10 @@ fi
 
 if [[ -z "$EP_ID" ]]; then
   echo "==> Creating endpoint '$ENDPOINT_NAME' ($PLATFORM / $PRESET, on-demand, $DISK_SIZE disk); this takes about 5 minutes…"
-  "$NEBIUS_BIN" ai endpoint create --parent-id "$NEBIUS_PARENT_ID" --name "$ENDPOINT_NAME" \
+  "$NEBIUS_BIN" ai endpoint create --parent-id "$ENDPOINT_PARENT_ID" --name "$ENDPOINT_NAME" \
     --image "$ENDPOINT_IMAGE" --platform "$PLATFORM" --preset "$PRESET" --on-demand --disk-size "$DISK_SIZE" \
     --container-port 8080 --auth none "${SUBNET_ARGS[@]}" "${ENV_ARGS[@]}" >/dev/null
-  EP_ID="$("$NEBIUS_BIN" ai endpoint get-by-name --parent-id "$NEBIUS_PARENT_ID" --name "$ENDPOINT_NAME" --format jsonpath='{.metadata.id}')"
+  EP_ID="$("$NEBIUS_BIN" ai endpoint get-by-name --parent-id "$ENDPOINT_PARENT_ID" --name "$ENDPOINT_NAME" --format jsonpath='{.metadata.id}')"
   echo "    created $EP_ID"
 else
   echo "==> Endpoint $EP_ID exists; the new image is under the same tag, restarting it (the URL is kept)…"
