@@ -9,7 +9,7 @@
   <b>Nebius x NVIDIA Global AI Hackathon Submission — Best Apps and Agents Track</b><br>
   Apache-2.0 License · Built with NVIDIA Nemotron 3 (Nano 30B · Super 120B · Ultra 550B) on Nebius Token Factory<br>
   🌐 <b>Live Command Center Demo:</b> <a href="https://nebius.helixstreet.io">https://nebius.helixstreet.io</a><br>
-  ☁️ <b>Same container on Nebius AI Cloud (Serverless AI endpoint, eu-west1):</b> <a href="https://port8080-e6d5g79dfjp897z.tunnel.applications.eu-west1.nebius.cloud">https://port8080-e6d5g79dfjp897z.tunnel.applications.eu-west1.nebius.cloud</a>
+  ☁️ <b>Same container on Nebius AI Cloud (Serverless AI endpoint, eu-west1; started for the judging window (Dec 1–15) and stopped otherwise to conserve credits):</b> <a href="https://port8080-e6d5g79dfjp897z.tunnel.applications.eu-west1.nebius.cloud">https://port8080-e6d5g79dfjp897z.tunnel.applications.eu-west1.nebius.cloud</a>
 </p>
 
 ---
@@ -94,7 +94,7 @@ Across our two seeded pipeline runs in `seed_data` (`demo-na12878` and `pgx-demo
 | **Nebius Serverless GPU Job** | `aijob-e00p9xmknz4yphfvmm` (`gpu-l40s-a` / `1gpu-16vcpu-64gb`) | Executed `nvcr.io/nvidia/clara/clara-parabricks:4.3.0-1` (`pbrun deepvariant`) in project `project-e00btn6gpr00s6vm81sqw7`, calling **78 variant records / 72 PASS calls** on GIAB NA12878 `chr20` in **6.049 seconds**. |
 | **Nebius Object Storage** | `s3://helixstreet-nebius-data` (`storagebucket-e008779569894118469733`) | Stores reference genome (`ucsc.hg19.chr20.unittest.fasta`), uploaded BAM/VCFs, and Parabricks outputs on `https://storage.eu-north1.nebius.cloud`. |
 | **Nebius SecretStash (formerly MysteryBox)** | `mbsec-e00zxbcp465mhbrhwf` | Injects S3 credentials into the Serverless GPU job container (`--volume s3://helixstreet-nebius-data:/mnt/nebius:rw:default@helixstreet-s3`). |
-| **Nebius Serverless AI Endpoint** | `aiendpoint-e01mb5sjet7c8rys8h` (`cpu-d3` / `2vcpu-8gb`, `eu-west1`) | Hosts this same container (Command Center + fleet API) on Nebius AI Cloud at [https://port8080-e6d5g79dfjp897z.tunnel.applications.eu-west1.nebius.cloud](https://port8080-e6d5g79dfjp897z.tunnel.applications.eu-west1.nebius.cloud), pulled from the project's Container Registry (`cr.eu-west1.nebius.cloud`); same Ed25519 enclave seed as the Cloud Run demo, so attestations verify across both hosts. |
+| **Nebius Serverless AI Endpoint** | `aiendpoint-e01mb5sjet7c8rys8h` (`cpu-d3` / `2vcpu-8gb`, `eu-west1`) | Hosts this same container (Command Center + fleet API) on Nebius AI Cloud at [https://port8080-e6d5g79dfjp897z.tunnel.applications.eu-west1.nebius.cloud](https://port8080-e6d5g79dfjp897z.tunnel.applications.eu-west1.nebius.cloud), pulled from the project's Container Registry (`cr.eu-west1.nebius.cloud`); same Ed25519 enclave seed as the Cloud Run demo, so attestations verify across both hosts. Billed per second like a VM, so it is started for the judging window (Dec 1–15) and stopped otherwise to conserve credits. |
 
 ---
 
@@ -264,7 +264,7 @@ The public demo at [https://nebius.helixstreet.io](https://nebius.helixstreet.io
 # a) Google Cloud Run (what serves nebius.helixstreet.io today; builds from source with Cloud Build)
 bash infra/deploy_cloud_run.sh
 
-# b) Nebius Serverless AI endpoint — live mirror: https://port8080-e6d5g79dfjp897z.tunnel.applications.eu-west1.nebius.cloud
+# b) Nebius Serverless AI endpoint — mirror: https://port8080-e6d5g79dfjp897z.tunnel.applications.eu-west1.nebius.cloud (started for the judging window (Dec 1–15) and stopped otherwise to conserve credits)
 #    (cpu-d3 2vcpu-8gb VM in eu-west1; the bucket and the verified GPU job stay in the eu-north1 project)
 ~/.nebius/bin/nebius iam whoami              # browser login; Nebius CLI sessions expire after 12 hours
 bash infra/deploy_nebius_endpoint.sh --check # validates session, non-GPU VM quota, Container Registry, image source
