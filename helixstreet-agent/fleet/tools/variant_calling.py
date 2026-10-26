@@ -15,7 +15,6 @@ import os
 import re
 import shutil
 import subprocess
-import threading
 import time
 
 from .. import clients, config
@@ -163,49 +162,56 @@ def _build_parabricks_command(user_id: str, bam_gcs_uri: str, output_vcf_gcs: st
     )
 
 
-def _simulate_async_vcf_landing(user_id: str, object_name: str, delay_sec: float = 10.0) -> None:
-    """Stages the verified GIAB NA12878 chr20 VCF replay fixture into the bucket and
-    fires the `/storage-event` webhook after `delay_sec` so the ingest pipeline
-    finishes its turn first and the analysis pipeline wakes up asynchronously."""
+def _nebius_cli_path() -> str:
+    return shutil.which("nebius") or os.path.expanduser("~/.nebius/bin/nebius")
 
-    def _worker():
-        time.sleep(delay_sec)
-        try:
-            blob = clients.storage().bucket(config.DATA_BUCKET).blob(object_name)
-            if not blob.exists():
-                compressed = gzip.compress(_DEMO_NA12878_VCF.encode("utf-8"))
-                blob.upload_from_string(compressed)
-                log.info(
-                    "Staged GIAB NA12878 chr20 VCF replay fixture: wrote %s (%d bytes)",
-                    object_name,
-                    len(compressed),
-                )
-            import requests
 
-            fleet_url = os.getenv("FLEET_URL", config.FLEET_URL)
-            api_token = os.getenv("HELIX_API_TOKEN", config.HELIX_API_TOKEN)
-            resp = requests.post(
-                f"{fleet_url.rstrip('/')}/storage-event",
-                headers={"X-Helix-Token": api_token},
-                json={
-                    "bucket": config.DATA_BUCKET,
-                    "name": object_name,
-                    "generation": str(blob.generation or int(time.time() * 1000)),
-                },
-                timeout=300,
-            )
-            log.info("Async VCF_READY webhook triggered (%s): %s", resp.status_code, resp.text[:200])
-        except Exception as e:
-            log.warning("Async VCF completion callback failed: %s", e)
+def live_gpu_dispatch_enabled() -> bool:
+    """True only when this process can create a real Nebius Serverless GPU job:
+    `NEBIUS_PARENT_ID` is configured, the `nebius` CLI is installed and
+    `HELIX_LIVE_GPU_DISPATCH=true`. Everything else replays the verified L40S output,
+    and `/healthz` reports whichever of the two is actually the case."""
+    live_dispatch = os.getenv("HELIX_LIVE_GPU_DISPATCH", "false").lower() in ("1", "true", "yes")
+    return bool(config.NEBIUS_PARENT_ID) and os.path.exists(_nebius_cli_path()) and live_dispatch
 
-    t = threading.Thread(target=_worker, daemon=True, name=f"nebius-parabricks-{user_id}")
-    t.start()
+
+def parabricks_execution_mode() -> str:
+    return "nebius_serverless_gpu" if live_gpu_dispatch_enabled() else "parabricks_na12878_replay_fixture"
+
+
+def replay_vcf_object(user_id: str) -> str:
+    """Object key where the variant-calling job (real or replayed) writes its VCF."""
+    return f"results/{user_id}/deepvariant/output.vcf.gz"
+
+
+def ensure_replay_vcf(user_id: str, bucket: str | None = None) -> dict:
+    """Stages the verified GIAB NA12878 chr20 VCF replay fixture at the job's expected
+    output path unless it is already there. Synchronous and idempotent: the variant-caller
+    tool calls it when it dispatches in replay mode, and `main.py` calls it again in the
+    ingest -> analysis hand-off, so the analysis fleet wakes even when the agent never
+    dispatched the job (no self-addressed webhook, no background thread)."""
+    bucket_name = bucket or config.DATA_BUCKET
+    object_name = replay_vcf_object(user_id)
+    blob = clients.storage().bucket(bucket_name).blob(object_name)
+    staged = False
+    if not blob.exists():
+        compressed = gzip.compress(_DEMO_NA12878_VCF.encode("utf-8"))
+        blob.upload_from_string(compressed)
+        staged = True
+        log.info(
+            "Staged GIAB NA12878 chr20 VCF replay fixture: wrote s3://%s/%s (%d bytes)",
+            bucket_name,
+            object_name,
+            len(compressed),
+        )
+    return {"bucket": bucket_name, "object": object_name, "generation": str(blob.generation), "staged": staged}
 
 
 def submit_parabricks_job(user_id: str, bam_gcs_uri: str) -> dict:
     """Submits an asynchronous GPU-accelerated NVIDIA Clara Parabricks (`pbrun deepvariant`)
     variant-calling job to Nebius Serverless GPU Jobs (`gpu-l40s-a`), or stages the
-    verified GIAB NA12878 chr20 replay fixture when `NEBIUS_PARENT_ID` is not set.
+    verified GIAB NA12878 chr20 replay fixture unless live GPU dispatch is enabled
+    (`HELIX_LIVE_GPU_DISPATCH=true` together with the `nebius` CLI and `NEBIUS_PARENT_ID`).
 
     Args:
         user_id: The pipeline user/sample identifier; output lands under
@@ -230,9 +236,8 @@ def submit_parabricks_job(user_id: str, bam_gcs_uri: str) -> dict:
 
     script = _build_parabricks_command(user_id, bam_gcs_uri, output_vcf_gcs)
 
-    nebius_bin = shutil.which("nebius") or os.path.expanduser("~/.nebius/bin/nebius")
-    live_dispatch = os.getenv("HELIX_LIVE_GPU_DISPATCH", "false").lower() in ("1", "true", "yes")
-    if config.NEBIUS_PARENT_ID and os.path.exists(nebius_bin) and live_dispatch:
+    nebius_bin = _nebius_cli_path()
+    if live_gpu_dispatch_enabled():
         try:
             mb_secret = getattr(config, "NEBIUS_MYSTERYBOX_SECRET", "helixstreet-s3")
             auth_vol = f"{volume_spec}:rw:default@{mb_secret}" if mb_secret else f"{volume_spec}:rw"
@@ -304,7 +309,7 @@ def submit_parabricks_job(user_id: str, bam_gcs_uri: str) -> dict:
     log.info("Staged Parabricks job spec (GIAB NA12878 replay fixture mode): %s", job_ref)
 
     if os.getenv("HELIX_AUTO_COMPLETE_JOB", "true").lower() in ("1", "true", "yes"):
-        _simulate_async_vcf_landing(user_id, output_rel)
+        ensure_replay_vcf(user_id)
 
     return {
         "status": "dispatched",
@@ -321,7 +326,7 @@ def submit_parabricks_job(user_id: str, bam_gcs_uri: str) -> dict:
         "expected_output_vcf": output_vcf_gcs,
         "note": (
             "Replaying verified NVIDIA Clara Parabricks 4.3.0-1 VCF output from Nebius L40S GPU job "
-            f"{VERIFIED_NEBIUS_GPU_JOB_ID} (78 records, 72 PASS calls, 6.049s GPU runtime) and triggering /storage-event asynchronously."
+            f"{VERIFIED_NEBIUS_GPU_JOB_ID} (78 records, 72 PASS calls, 6.049s GPU runtime); the fleet chains the analysis pipeline as soon as the ingest turn ends."
         ),
     }
 
@@ -348,7 +353,7 @@ def get_batch_job_status(batch_job_name: str) -> dict:
     Args:
         batch_job_name: Full resource name returned by submit_parabricks_job / submit_deepvariant_job.
     """
-    mode = "nebius_serverless_gpu" if config.NEBIUS_PARENT_ID else "parabricks_na12878_replay_fixture"
+    mode = parabricks_execution_mode()
     return {
         "job": batch_job_name,
         "execution_mode": mode,

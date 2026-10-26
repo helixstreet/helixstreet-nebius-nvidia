@@ -77,3 +77,7 @@ token.txt
 
 # Ed25519 enclave signing seed (never commit; set HELIX_ENCLAVE_ED25519_SEED_HEX in deployments)
 *.seed
+
+# SQLite WAL side files (created whenever the Memory Bank is opened)
+*.sqlite3-wal
+*.sqlite3-shm

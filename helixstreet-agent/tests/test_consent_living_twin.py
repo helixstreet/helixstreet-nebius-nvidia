@@ -375,8 +375,10 @@ def test_fastapi_endpoints_and_token_auth(monkeypatch):
     assert r_ver.json()["public_key_ed25519"] == client.get("/healthz").json()["enclave_public_key_ed25519"]
 
     # FHIR MedicationRequest webhook
+    assert client.post("/fhir/MedicationRequest", json={"patient_id": "pgx-demo-001"}).status_code == 401  # token-gated
     r_fhir = client.post(
         "/fhir/MedicationRequest",
+        headers={"X-Helix-Token": config.HELIX_API_TOKEN},
         json={"patient_id": "pgx-demo-001", "drug": "escitalopram", "use_nemotron": False},
     )
     assert r_fhir.status_code == 200
@@ -531,3 +533,62 @@ def test_storage_event_background_mode_acknowledges_then_runs(monkeypatch):
         json={"bucket": "demo-bucket", "name": name, "generation": "3"},
     )
     assert r_sync.status_code == 200 and r_sync.json()["status"] == "completed"
+
+
+def test_bam_event_chains_analysis_after_ingest(monkeypatch):
+    """A BAM upload runs the ingest fleet and then, because Object Storage on the demo emits
+    no notifications, the service stages the replay VCF (if the agent did not) and runs the
+    analysis fleet itself; the result object is claimed so a notification would be a duplicate."""
+    import secrets as _secrets
+
+    from fleet.tools.variant_calling import replay_vcf_object
+
+    client = TestClient(app_main.app)
+    auth_headers = {"X-Helix-Token": config.HELIX_API_TOKEN}
+    monkeypatch.delenv("HELIX_LIVE_GPU_DISPATCH", raising=False)
+    bucket = config.DATA_BUCKET
+    uid = f"wgs-{_secrets.token_hex(3)}"
+    calls: list[tuple[str, str, str]] = []
+
+    async def fake_run_pipeline(pipeline, user_id, prompt):
+        calls.append((pipeline.name, user_id, prompt))
+        return {"ok": True}
+
+    monkeypatch.setattr(app_main, "run_pipeline", fake_run_pipeline)
+    r = client.post(
+        "/storage-event",
+        headers=auth_headers,
+        json={"bucket": bucket, "name": f"uploads/{uid}/sample.bam", "generation": "7", "async": True},
+    )
+    assert r.status_code == 202
+    assert [c[:2] for c in calls] == [("helixstreet_ingest_fleet", uid), ("helixstreet_analysis_fleet", uid)]
+    assert "VCF_READY event" in calls[1][2] and replay_vcf_object(uid) in calls[1][2]
+    vcf = clients.storage().bucket(bucket).blob(replay_vcf_object(uid))
+    assert vcf.exists()
+
+    # The chained result object is claimed exactly like a storage notification would be.
+    r_dup = client.post(
+        "/storage-event",
+        headers=auth_headers,
+        json={"bucket": bucket, "name": replay_vcf_object(uid), "generation": str(vcf.generation)},
+    )
+    assert r_dup.status_code == 200 and r_dup.json()["status"] == "duplicate"
+    assert len(calls) == 2
+
+    # The synchronous path chains too and reports it.
+    uid2 = f"wgs-{_secrets.token_hex(3)}"
+    r_sync = client.post(
+        "/storage-event",
+        headers=auth_headers,
+        json={"bucket": bucket, "name": f"uploads/{uid2}/sample.bam", "generation": "8"},
+    )
+    assert r_sync.status_code == 200 and r_sync.json()["status"] == "completed"
+    assert r_sync.json()["chained"]["pipeline"] == "helixstreet_analysis_fleet"
+    assert [c[1] for c in calls[2:]] == [uid2, uid2]
+
+
+def test_healthz_reports_the_real_parabricks_mode_and_the_verified_job(monkeypatch):
+    monkeypatch.delenv("HELIX_LIVE_GPU_DISPATCH", raising=False)
+    body = TestClient(app_main.app).get("/healthz").json()
+    assert body["parabricks_execution_mode"] == "parabricks_na12878_replay_fixture"
+    assert body["parabricks_verified_job_id"].startswith("aijob-")

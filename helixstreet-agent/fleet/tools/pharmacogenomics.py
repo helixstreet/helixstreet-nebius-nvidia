@@ -463,6 +463,19 @@ def _source_title(r: dict) -> str:
     return (f"{parsed.netloc} · {tail}" if tail and tail != parsed.netloc else parsed.netloc)[:200]
 
 
+def _is_document_url(url: str) -> bool:
+    return bool(re.search(r"\.(pdf|docx?)(\?|$)", url or "", flags=re.I))
+
+
+def _is_blog_url(url: str) -> bool:
+    """Publisher blog posts (e.g. blog.clinpgx.org) announce guidelines; they are not the
+    guideline text, so they are never quoted and rank below every other publisher page."""
+    from urllib.parse import urlparse
+
+    host = urlparse(url or "").netloc.lower()
+    return host.startswith("blog.") or "/blog/" in (url or "").lower()
+
+
 def _guideline_source_rank(r: dict) -> tuple:
     """Prefers the canonical CPIC guideline HTML page, then ClinPGx/PharmGKB guideline
     annotations, then DPWG, then anything else from the publisher domains; PDFs last."""
@@ -473,6 +486,8 @@ def _guideline_source_rank(r: dict) -> tuple:
         pri = 1
     elif "knmp.nl" in url:
         pri = 2
+    elif _is_blog_url(url):
+        pri = 4
     else:
         pri = 3
     return (pri, url.endswith(".pdf"), -float(r.get("score") or 0.0))
@@ -481,9 +496,11 @@ def _guideline_source_rank(r: dict) -> tuple:
 def watch_guideline_updates(drug: str, gene: str, max_results: int = 5, fallback_url: str = "") -> dict:
     """Live guideline watch for one drug-gene pair: a domain-restricted Tavily Search
     for the governing guideline source (CPIC, ClinPGx / PharmGKB, DPWG), ranked to
-    prefer the canonical CPIC guideline page, then a Tavily Extract of the first
-    extractable source (publisher pages often block automated fetching, so the
-    Knowledge Graph's PubMed Central publication is tried as `fallback_url`).
+    prefer the canonical CPIC guideline page, then one batched Tavily Extract. The
+    verbatim quote comes from the governing publication the Knowledge Graph cites
+    (`fallback_url`, PubMed Central) whenever it extracts, otherwise from the first
+    publisher page or PDF/DOCX that does (publisher pages often block fetching;
+    publisher blog posts are listed as sources but never quoted).
     Returns the ranked sources, the verbatim passage, which URLs could not be
     extracted, and a SHA-256 fingerprint over the top source URL + passage text so
     the Living Twin can tell whether the governing guideline changed since its
@@ -541,25 +558,31 @@ def watch_guideline_updates(drug: str, gene: str, max_results: int = 5, fallback
     ]
     passage: dict = {}
     failed: list[str] = []
-    # Extraction order: guideline web pages first, then the published guideline article
-    # the Knowledge Graph cites (PubMed Central), and only then PDFs / DOCX drafts that
-    # the publishers also host — so a quote comes from the published text whenever the
-    # publisher pages block automated fetching.
+    # Quote priority: the governing publication the Knowledge Graph cites (PubMed Central)
+    # first, then guideline web pages from the publishers (blog posts excluded), and only
+    # then the PDF / DOCX copies the publishers also host. The Tavily search hits still
+    # drive the watch itself: the fingerprint keys on the top-ranked source URL.
     top_urls = [s["url"] for s in sources[:3]]
-    pages = [u for u in top_urls if not re.search(r"\.(pdf|docx?)(\?|$)", u, flags=re.I)]
-    documents = [u for u in top_urls if u not in pages]
-    candidates = pages + ([fallback_url] if fallback_url and fallback_url not in pages else []) + [u for u in documents if u != fallback_url]
+    pages = [u for u in top_urls if not _is_document_url(u) and not _is_blog_url(u)]
+    documents = [u for u in top_urls if _is_document_url(u)]
+    candidates = ([fallback_url] if fallback_url else []) + [u for u in pages + documents if u != fallback_url]
     extracted_all = extract_guideline_passages(candidates, [gene_sym.lower(), drug_name]) if candidates else {}
+    failed = [u for u in candidates if not (extracted_all.get(u) or {}).get("text")]
     for cand in candidates:
         extracted = extracted_all.get(cand) or {}
         if extracted.get("text"):
             passage = {
                 **extracted,
-                "canonical_source": bool(sources) and cand == sources[0]["url"],
+                "canonical_source": bool(fallback_url) and cand == fallback_url,
+                "source_kind": (
+                    "governing_publication" if cand == fallback_url
+                    else "publisher_document" if cand in documents
+                    else "publisher_page"
+                ),
+                "top_search_result": bool(sources) and cand == sources[0]["url"],
                 "fallback_used": cand == fallback_url,
             }
             break
-        failed.append(cand)
     top_url = sources[0]["url"] if sources else ""
     material = f"{top_url}|{passage.get('text', '')}" if (top_url or passage) else ""
     fingerprint = hashlib.sha256(material.encode("utf-8")).hexdigest() if material else None

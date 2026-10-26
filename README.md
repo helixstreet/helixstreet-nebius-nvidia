@@ -13,11 +13,11 @@
 
 ---
 
-> **Executive Summary:** **Helixstreet is the first consent-native pharmacogenomics platform. A patient's genome stays sealed in their own vault; Helixstreet's multi-agent system computes guideline-grounded phenotype attestations inside a confidential enclave and releases only a signed, auditable answer — *"CYP2C19 poor metabolizer, CPIC 2024, evidence level 1A"* — to the clinician, pharmacy or AI that asked (`0 bytes raw genome released to requesters`). Variant summaries are sent to Nebius Token Factory for inference; raw BAM/VCF never leave the bucket; enable Token Factory Zero Data Retention for production. Every access is purpose-bound, time-limited and recorded on a tamper-evident ledger. The twin watches new prescriptions and guideline updates for life, flagging actionable interactions months before harm.**
+> **Executive Summary:** **Helixstreet is a consent-native pharmacogenomics layer. A patient's genome stays sealed in their own vault; Helixstreet's multi-agent system computes guideline-grounded phenotype attestations inside a sealed software vault (no hardware TEE yet) and releases only a signed, auditable answer — *"CYP2C19 poor metabolizer, CPIC 2024, evidence level 1A"* — to the clinician, pharmacy or AI that asked (`0 bytes raw genome released to requesters`). Variant summaries are sent to Nebius Token Factory for inference; raw BAM/VCF never leave the bucket; enable Token Factory Zero Data Retention for production. Every access is purpose-bound, time-limited and recorded on a tamper-evident ledger. The twin watches new prescriptions and guideline updates for life, flagging actionable interactions months before harm.**
 
 <p align="center">
   <a href="https://github.com/helixstreet/helixstreet-nebius-nvidia/actions/workflows/ci.yml"><img src="https://github.com/helixstreet/helixstreet-nebius-nvidia/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/tests-82%20passing-brightgreen" alt="82 tests">
+  <img src="https://img.shields.io/badge/tests-86%20passing-brightgreen" alt="86 tests">
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="Apache-2.0">
   <a href="https://nebius.helixstreet.io"><img src="https://img.shields.io/badge/live%20demo-nebius.helixstreet.io-0e7490" alt="Live demo"></a>
 </p>
@@ -100,6 +100,7 @@ Across our two seeded pipeline runs in `seed_data` (`demo-na12878` and `pgx-demo
 
 To keep every claim auditable, Helixstreet explicitly distinguishes live runtime capabilities from simulated scenarios and roadmap placeholders:
 
+- **Software enclave, not a hardware TEE:** the "enclave" is the fleet's sealed vault process (genotypes stay in the Memory Bank, the Ed25519 seed comes from the environment, only public keys are published). No confidential-computing hardware is used in this build; the signatures, hash chains and Merkle proofs are real and verifiable offline.
 - **Replay Fixture Mode (`execution_mode: "parabricks_na12878_replay_fixture"`):** By default (`HELIX_LIVE_GPU_DISPATCH=false`), `submit_parabricks_job` replays the real VCF (`output.vcf.gz`, 78 records / 72 PASS) captured from our verified Nebius L40S GPU run `aijob-e00p9xmknz4yphfvmm` so interactive judge demos complete without spinning up paid GPU VMs. Setting `HELIX_LIVE_GPU_DISPATCH=true` with `NEBIUS_PARENT_ID` dispatches a live Nebius Serverless GPU job.
 - **Simulated Scenarios (`execution_mode: "simulated_scenario"`, `data_provenance: "illustrative constants, not measured"`):**
   - *Simulated scenario: Federated PGx & Equity Cohort Aggregator (`POST /federated/cohort-query`)* — illustrates how 4 regional nodes could aggregate Ed25519-signed phenotype counts with `0` raw genomes pooled.
@@ -180,7 +181,7 @@ Object Storage (s3://<bucket>)
 │   │       ├── memory.py                    # Memory Bank + deterministic Merkle vault verification
 │   │       ├── audit.py                     # SHA-256 hash-chained tamper-evident audit ledger
 │   │       └── storage.py                   # Storage text & SHA-256 fingerprinting helpers
-│   └── tests/                               # 72 automated unit & integration tests (pytest)
+│   └── tests/                               # 86 automated unit & integration tests (pytest)
 ├── helixstreet-ui/
 │   └── dashboard.py                         # Streamlit Command Center (7 live tabs + Living Twin & Consent Gate + 3Dmol.js)
 ├── infra/
@@ -211,7 +212,7 @@ Object Storage (s3://<bucket>)
 git clone https://github.com/helixstreet/helixstreet-nebius-nvidia.git
 cd helixstreet-nebius-nvidia
 
-# Create virtualenv and install pinned dependencies
+# Create a virtualenv at the repository root and install the dependencies
 python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 
@@ -220,10 +221,10 @@ export NEBIUS_API_KEY="your-nebius-token-factory-api-key"
 export TAVILY_API_KEY="your-optional-tavily-api-key"
 ```
 
-### 3. Run the Automated Test Suite (72 Tests)
+### 3. Run the Automated Test Suite (86 Tests)
 
 ```bash
-cd helixstreet-agent && ./.venv/bin/python -m pytest -q
+cd helixstreet-agent && ../.venv/bin/python -m pytest -q
 ```
 
 ### 4. Start the Fleet Service & Command Center Dashboard
@@ -241,18 +242,17 @@ cd helixstreet-ui
 The fleet API is also reachable locally at [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs). On the public demo both services share one origin behind Caddy: the UI at [https://nebius.helixstreet.io](https://nebius.helixstreet.io), health + enclave keys at [`/api/healthz`](https://nebius.helixstreet.io/api/healthz), and the OpenAPI explorer at [`/api/docs`](https://nebius.helixstreet.io/api/docs).
 
 Open [http://localhost:8080](http://localhost:8080) (or the live deployment at [https://nebius.helixstreet.io](https://nebius.helixstreet.io)):
-- **`1 · Pipeline runs` tab:** Inspect **Telemetry-Derived 3-Tier Routing Economics**, the **HIPAA Safe Harbor PII Redaction Diff** (`manifest.json` vs `manifest.scrubbed.json`, synthetic demo PII), the **Per-Step Execution Timeline, Latency & Token Cost Breakdown**, and the **NVIDIA Clara Parabricks (`pbrun deepvariant`) Job Inspector**.
+- **`1 · Living Twin & Consent Gate` tab:** Run the **6-Step Judge Lifecycle Self-Test** (with live **NVIDIA Nemotron 3 Super** synthesis and **Verbatim passage (Tavily Extract)**), test 1-tap consent revocation, simulate unprompted **HL7 FHIR R4 `MedicationRequest`** and **CPIC Guideline Update** streams, export **W3C Verifiable Credentials**, and inspect the **Simulated scenarios** expander.
 - **`2 · Digital twins` tab:**
   - Click **📄 Export Clinician PGx & Genomic Report (.md)** to download a complete Markdown clinical report.
   - Inspect the **1000 Genomes Phase 3 Super-Population Stratification (`ALL`, `AFR`, `AMR`, `EAS`, `EUR`, `SAS`)** table.
   - Run the **Live Nebius Token Factory Multi-Drug Prescription Safety & Clinical Copilot** (`Nemotron 3 Ultra 550B`, `Super 120B`, or `Nano 30B`) with one-click polypharmacy/oncology scenarios.
   - Explore the **Interactive 3D Biomolecular Structure Viewer (RCSB PDB / WebGL 3Dmol.js)** for all 6 CPIC pharmacogenes (`CYP2C19 · 4GQS`, `DPYD · 1H7X`, `CYP2C9 · 1OG5`, `VKORC1 · 7FFE`, `CYP3A5 · 5VEU`, `SLCO1B1 · 8HND`).
   - Query **Live OpenFDA Drug Label Boxed Warnings**, **Tavily ClinicalTrials.gov Biomarker Matcher**, and **Europe PMC** peer-reviewed citations.
-- **`3 · Private proofs` tab:** Generate & verify **1-of-25** (`demo-na12878`) or **1-of-6** (`pgx-demo-001`) minimal-disclosure Merkle genotype proofs and test zero-genotype-leakage parent/child kinship (`IBS0 = 0`).
-- **`4 · Living Twin & Consent Gate` tab:** Run the **6-Step Judge Lifecycle Self-Test** (with live **NVIDIA Nemotron 3 Super** synthesis and **Verbatim passage (Tavily Extract)**), test 1-tap consent revocation, simulate unprompted **HL7 FHIR R4 `MedicationRequest`** and **CPIC Guideline Update** streams, export **W3C Verifiable Credentials**, and inspect the **Simulated scenarios** expander.
+- **`3 · Pipeline runs` tab:** Inspect **Telemetry-Derived 3-Tier Routing Economics**, the **HIPAA Safe Harbor PII Redaction Diff** (`manifest.json` vs `manifest.scrubbed.json`, synthetic demo PII), the **Per-Step Execution Timeline, Latency & Token Cost Breakdown**, and the **NVIDIA Clara Parabricks (`pbrun deepvariant`) Job Inspector**.
+- **`4 · Private proofs` tab:** Generate & verify **1-of-25** (`demo-na12878`) or **1-of-6** (`pgx-demo-001`) minimal-disclosure Merkle genotype proofs and test zero-genotype-leakage parent/child kinship (`IBS0 = 0`).
 - **`5 · Fleet registry` tab:** Inspect the **Persisted 5-Run/Tier Nebius Token Factory Benchmark**, trigger a live 3-tier ping, and review **Nebius resources actually used**.
 - **`6 · Audit ledger` & `7 · About` tabs:** Verify the **SHA-256 hash-chained audit ledger** and inspect data provenance and Apache-2.0 license details.
-
 ---
 
 ## Public Demo API & Offline Attestation Verification
@@ -264,7 +264,7 @@ Open [http://localhost:8080](http://localhost:8080) (or the live deployment at [
 | `POST https://nebius.helixstreet.io/api/ask` | none (daily quota) | Consent-gated, Ed25519-signed phenotype attestation; `"use_nemotron": true` calls **Nemotron 3 Super** live on Token Factory |
 | `POST https://nebius.helixstreet.io/api/verify` | none | Verifies a bundle against the trusted enclave keys (optionally pin `trusted_public_key_ed25519`) |
 | `GET https://nebius.helixstreet.io/api/guidelines/watch?drug=clopidogrel&gene=CYP2C19` | none | Live Tavily guideline watch: domain-restricted Search for the governing CPIC / ClinPGx / DPWG source + Extract of the guideline text (PMC fallback) + fingerprint (no alert raised) |
-| `POST /api/consents/grant`, `/api/consents/revoke`, `/api/rwe/outcome`, `/api/guidelines/update`, `/api/a2a/negotiate`, `/api/storage-event` | `X-Helix-Token` | State-mutating endpoints; the public demo uses a private token (the repo default is for local development only). `/api/storage-event` with `"async": true` answers **HTTP 202** at once and runs the agent pipeline in the background (what the Command Center's run buttons use); without the flag it stays synchronous. |
+| `POST /api/consents/grant`, `/api/consents/revoke`, `/api/fhir/MedicationRequest`, `/api/rwe/outcome`, `/api/guidelines/update`, `/api/a2a/negotiate`, `/api/storage-event` | `X-Helix-Token` | State-mutating endpoints; the public demo uses a private token (the repo default is for local development only). `/api/storage-event` with `"async": true` answers **HTTP 202** at once and runs the agent pipeline in the background (what the Command Center's run buttons use); without the flag it stays synchronous. |
 
 ```bash
 # 1. Ask the live enclave for a signed attestation (Nemotron 3 Super explains it; the numbers come from the Knowledge Graph)

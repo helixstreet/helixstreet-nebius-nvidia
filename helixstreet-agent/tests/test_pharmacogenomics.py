@@ -217,7 +217,9 @@ class TestTavilyClinicalSearchAndExtract:
             assert res["result_count"] == 1
             assert res["sources"][0]["url"].startswith("https://cpicpgx.org/")
             assert res["passage"]["source"] == "tavily_extract"
-            assert res["passage"]["canonical_source"] is True
+            assert res["passage"]["canonical_source"] is False  # a publisher page, not the governing publication
+            assert res["passage"]["top_search_result"] is True
+            assert res["passage"]["source_kind"] == "publisher_page"
             assert res["passage"]["fallback_used"] is False
             assert "cyp2c19" in res["passage"]["text"].lower()
             assert len(res["fingerprint"]) == 64
@@ -261,7 +263,9 @@ class TestTavilyClinicalSearchAndExtract:
             assert res["execution_mode"] == "live_tavily_watch"
             assert res["extract_failed_urls"] == ["https://cpicpgx.org/guidelines/x"]
             assert res["passage"]["fallback_used"] is True
-            assert res["passage"]["canonical_source"] is False
+            assert res["passage"]["canonical_source"] is True  # the Knowledge Graph's governing publication
+            assert res["passage"]["source_kind"] == "governing_publication"
+            assert res["passage"]["top_search_result"] is False
             assert "poor metabolizers" in res["passage"]["text"].lower()
 
     def test_guideline_watch_without_key_is_labelled(self, monkeypatch):
@@ -442,3 +446,66 @@ def test_watch_prefers_published_article_over_pdf_and_docx_drafts(monkeypatch):
         assert res["extract_failed_urls"] == ["https://www.clinpgx.org/guidelineAnnotation/PA166127638"]
         # Junk host-concatenation titles are replaced by a readable title derived from the URL.
         assert res["sources"][1]["title"] == "cpicpgx.org · SSRI guideline for CPIC review 11082022"
+
+
+def test_watch_quotes_governing_publication_and_never_a_publisher_blog(monkeypatch):
+    """The verbatim quote comes from the Knowledge Graph's publication when it extracts;
+    publisher blog posts stay in the ranked sources (last) but are never extracted."""
+    import tempfile
+
+    import requests
+
+    from fleet import clients, config
+    from fleet.tools.pharmacogenomics import watch_guideline_updates
+
+    blog = "https://blog.clinpgx.org/cpic-guidelines-for-cyp2c19-genotype"
+    annotation = "https://www.clinpgx.org/guidelineAnnotation/PA166104948"
+    pdf_2022 = "https://files.cpicpgx.org/data/guideline/publication/clopidogrel/2022/35034351.pdf"
+    pmc = "https://pmc.ncbi.nlm.nih.gov/articles/PMC9287492/"
+    with tempfile.TemporaryDirectory() as tmp:
+        monkeypatch.setattr(config, "DATA_DIR", tmp)
+        monkeypatch.setattr(config, "HELIX_DATA_DIR", tmp)
+        clients.state_store.cache_clear()
+        monkeypatch.setenv("TAVILY_API_KEY", "tvly-test-key")
+        extract_batches: list[list[str]] = []
+
+        class FakeResp:
+            status_code = 200
+
+            def __init__(self, payload):
+                self._payload = payload
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return self._payload
+
+        def fake_post(url, headers=None, json=None, timeout=None):
+            if url.endswith("/search"):
+                return FakeResp(
+                    {
+                        "results": [
+                            {"title": "Annotation of CPIC Guideline for clopidogrel", "url": annotation, "content": "c", "score": 0.88},
+                            {"title": "CPIC guidelines for CYP2C19 genotype and clopidogrel therapy", "url": blog, "content": "c", "score": 0.95},
+                            {"title": "2022 Update - CPIC", "url": pdf_2022, "content": "c", "score": 0.91},
+                        ]
+                    }
+                )
+            extract_batches.append(list(json["urls"]))
+            results = [
+                {"url": u, "raw_content": f"Intro.\n\nCYP2C19 poor metabolizers prescribed clopidogrel: the recommendation is prasugrel or ticagrelor, per {u}."}
+                for u in json["urls"]
+                if u != annotation  # the annotation page blocks fetching
+            ]
+            failed = [{"url": u, "error": "Failed to fetch url"} for u in json["urls"] if u == annotation]
+            return FakeResp({"results": results, "failed_results": failed})
+
+        monkeypatch.setattr(requests, "post", fake_post)
+        res = watch_guideline_updates("clopidogrel", "CYP2C19", fallback_url=pmc)
+        assert [s_["url"] for s_ in res["sources"]][-1] == blog  # listed, ranked last
+        assert extract_batches and blog not in extract_batches[0] and extract_batches[0][0] == pmc
+        assert res["passage"]["url"] == pmc
+        assert res["passage"]["source_kind"] == "governing_publication"
+        assert res["passage"]["canonical_source"] is True and res["passage"]["top_search_result"] is False
+        assert res["extract_failed_urls"] == [annotation]

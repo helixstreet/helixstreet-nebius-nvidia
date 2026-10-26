@@ -1948,11 +1948,11 @@ def render_living_twin() -> None:
                                 f"**Verbatim passage (Tavily Extract)** · [{g_passage.get('url','')}]({g_passage.get('url','')}) "
                                 f"· retrieved `{g_passage.get('retrieved_at','')}`\n\n{g_passage['text']}"
                             )
-                            if g_passage.get("fallback_used"):
+                            if g_passage.get("canonical_source") or g_passage.get("fallback_used"):
                                 st.caption(
-                                    "The publisher's guideline pages block automated fetching, so the quote comes from the "
-                                    "published CPIC guideline article on PubMed Central (the Knowledge Graph's guideline_url), "
-                                    "which is preferred over PDF / DOCX copies of the guideline."
+                                    "Quoted from the governing CPIC publication on PubMed Central (the Knowledge Graph's "
+                                    "guideline citation), which is preferred over the publishers' web pages, blog posts and "
+                                    "PDF / DOCX copies; the ranked sources above are what today's live Tavily search found."
                                 )
                     else:
                         st.error(

@@ -1,4 +1,8 @@
-"""Helixstreet fleet service: Event-driven entrypoint on Nebius Serverless Endpoints.
+"""Helixstreet fleet service: event-driven FastAPI entrypoint.
+
+All agents run NVIDIA Nemotron 3 on Nebius Token Factory and variant calling targets
+Nebius Serverless GPU jobs (replayed from the verified L40S run by default); the public
+demo container itself is hosted on Google Cloud Run behind Caddy.
 
 Event routing (deterministic) -> pipeline execution (agentic, NVIDIA Nemotron 3
 via Nebius Token Factory + Google ADK):
@@ -23,6 +27,7 @@ from fastapi.responses import JSONResponse
 
 from fleet import clients, config
 from fleet.agents import analysis_pipeline, ingest_pipeline
+from fleet.tools import variant_calling as vc
 from fleet.registry import publish_registry
 from fleet.runner import run_pipeline
 from fleet.tools import consent_vault as cv
@@ -92,7 +97,7 @@ def startup():
 def healthz():
     return {
         "status": "ok",
-        "category": "First Consent-Native Pharmacogenomics Layer (0 Raw-Genome Bytes Released to Requesters)",
+        "category": "Consent-Native Pharmacogenomics Layer (0 Raw-Genome Bytes Released to Requesters)",
         "platform": "Nebius AI Cloud + Nebius Token Factory",
         "token_factory_base_url": config.NEBIUS_BASE_URL,
         "reasoning_model": config.NEMOTRON_ULTRA_MODEL,
@@ -102,9 +107,8 @@ def healthz():
         "variant_caller": "NVIDIA Clara Parabricks 4.3 (pbrun deepvariant)",
         "parabricks_image": config.PARABRICKS_IMAGE,
         "serverless_gpu_platform": f"{config.NEBIUS_GPU_PLATFORM} ({config.NEBIUS_GPU_PRESET})",
-        "parabricks_execution_mode": (
-            "nebius_serverless_gpu" if config.NEBIUS_PARENT_ID else "parabricks_na12878_replay_fixture"
-        ),
+        "parabricks_execution_mode": vc.parabricks_execution_mode(),
+        "parabricks_verified_job_id": vc.VERIFIED_NEBIUS_GPU_JOB_ID,
         "enclave_public_key_ed25519": cv.get_enclave_public_key_hex(),
         "enclave_trusted_keys": cv.trusted_enclave_public_keys(),
         "api_key_configured": bool(config.NEBIUS_API_KEY),
@@ -172,7 +176,7 @@ async def revoke_patient_consent(request: Request):
     )
 
 
-@app.post("/fhir/MedicationRequest")
+@app.post("/fhir/MedicationRequest", dependencies=[Depends(_require_helix_token)])
 async def fhir_medication_request_webhook(request: Request):
     """Always-On Living Twin HL7 FHIR R4 MedicationRequest Watcher endpoint."""
     body = await request.json()
@@ -359,9 +363,46 @@ def _mark_run_queued(uid: str, pipeline_name: str, bucket: str, name: str) -> No
         log.debug("Could not record QUEUED stage for %s: %s", uid, exc)
 
 
+def _vcf_ready_prompt(uid: str, bucket: str, name: str) -> str:
+    return (
+        f"VCF_READY event. user_id: {uid}. "
+        f"Variant calls available at: s3://{bucket}/{name}. "
+        "Analyze the variants, add 1000 Genomes population context, and "
+        "persist the digital twin."
+    )
+
+
+async def _chain_analysis_after_ingest(uid: str, bucket: str):
+    """Deterministic ingest -> analysis hand-off. Object Storage on the public demo emits no
+    bucket notifications, so once the ingest fleet's turn ends the service itself looks for
+    the variant-calling output: in replay mode it stages the verified L40S fixture if the
+    variant-caller agent did not, claims the result object exactly like a storage event
+    would (a later notification for the same generation is a duplicate) and runs the
+    analysis fleet on it. With live GPU dispatch the real job's VCF wakes the analysis
+    fleet later through /storage-event instead."""
+    name = vc.replay_vcf_object(uid)
+    blob = clients.storage().bucket(bucket).blob(name)
+    if not blob.exists():
+        if vc.live_gpu_dispatch_enabled():
+            log.info("Live GPU job pending for %s; the analysis fleet wakes when %s lands.", uid, name)
+            return None
+        vc.ensure_replay_vcf(uid, bucket)
+    generation = str(blob.generation)
+    if _already_processed(bucket, name, generation):
+        return None
+    log.info("Chaining %s for %s on s3://%s/%s (gen %s)", analysis_pipeline.name, uid, bucket, name, generation)
+    try:
+        return await run_pipeline(analysis_pipeline, uid, _vcf_ready_prompt(uid, bucket, name))
+    except Exception:
+        _event_ref(bucket, name, generation).delete()
+        raise
+
+
 async def _run_pipeline_background(pipeline, uid: str, prompt: str, bucket: str, name: str, generation: str) -> None:
     try:
         await run_pipeline(pipeline, uid, prompt)
+        if pipeline is ingest_pipeline:
+            await _chain_analysis_after_ingest(uid, bucket)
     except Exception:  # noqa: BLE001
         log.exception("Background pipeline %s failed for %s", pipeline.name, uid)
         # Release the idempotency claim so a retry can reprocess the same object.
@@ -389,12 +430,7 @@ async def handle_storage_event(request: Request, background_tasks: BackgroundTas
         )
     elif m := _RESULT_RE.match(name) or _VCF_UPLOAD_RE.match(name):
         pipeline, uid = analysis_pipeline, m["uid"]
-        prompt = (
-            f"VCF_READY event. user_id: {uid}. "
-            f"Variant calls available at: s3://{bucket}/{name}. "
-            "Analyze the variants, add 1000 Genomes population context, and "
-            "persist the digital twin."
-        )
+        prompt = _vcf_ready_prompt(uid, bucket, name)
     else:
         return {"status": "ignored", "reason": "object outside fleet routing rules"}
 
@@ -412,8 +448,12 @@ async def handle_storage_event(request: Request, background_tasks: BackgroundTas
 
     try:
         final = await run_pipeline(pipeline, uid, prompt)
+        chained = await _chain_analysis_after_ingest(uid, bucket) if pipeline is ingest_pipeline else None
     except Exception:
         # Release the idempotency claim so retry can reprocess
         _event_ref(bucket, name, generation).delete()
         raise
-    return {"status": "completed", "pipeline": pipeline.name, "user_id": uid, "summary": final}
+    response = {"status": "completed", "pipeline": pipeline.name, "user_id": uid, "summary": final}
+    if chained is not None:
+        response["chained"] = {"pipeline": analysis_pipeline.name, "summary": chained}
+    return response

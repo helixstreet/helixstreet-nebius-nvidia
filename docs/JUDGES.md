@@ -55,7 +55,7 @@ The verifier pins the public keys published by the running fleet (`enclave_trust
 ## Tests
 
 ```bash
-cd helixstreet-agent && ../.venv/bin/python -m pytest -q    # 82 tests, no API keys needed
+cd helixstreet-agent && ../.venv/bin/python -m pytest -q    # 86 tests, no API keys needed
 ```
 
 CI runs the same suite on Python 3.11 and 3.12 on every push (`.github/workflows/ci.yml`).
