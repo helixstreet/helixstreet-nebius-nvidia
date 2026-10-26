@@ -188,7 +188,7 @@ Object Storage (s3://<bucket>)
 │   ├── Caddyfile                            # One public port: / -> Streamlit 8501, /api/* + /healthz -> FastAPI 8000
 │   ├── container-entrypoint.sh              # Seeds HELIX_DATA_DIR on first start, boots uvicorn + streamlit + caddy
 │   ├── deploy_cloud_run.sh                  # Front-end deploy (API keys + Ed25519 seed injected as env vars, never baked in)
-│   └── deploy.sh                            # Nebius AI Cloud endpoint / GPU job bootstrap script
+│   └── deploy_nebius_endpoint.sh            # Same container as a Nebius Serverless AI endpoint (cpu-d3; --check validates session, quota, registry)
 └── scripts/
     ├── verify_attestation.py                # Standalone CLI verifier for Ed25519 signatures & SHA-256 consent receipts
     ├── run_demo.sh                          # Triggers Act 1: NA12878 BAM -> Ingest -> Variant Calling -> Analysis
@@ -253,6 +253,22 @@ Open [http://localhost:8080](http://localhost:8080) (or the live deployment at [
 - **`4 · Private proofs` tab:** Generate & verify **1-of-25** (`demo-na12878`) or **1-of-6** (`pgx-demo-001`) minimal-disclosure Merkle genotype proofs and test zero-genotype-leakage parent/child kinship (`IBS0 = 0`).
 - **`5 · Fleet registry` tab:** Inspect the **Persisted 5-Run/Tier Nebius Token Factory Benchmark**, trigger a live 3-tier ping, and review **Nebius resources actually used**.
 - **`6 · Audit ledger` & `7 · About` tabs:** Verify the **SHA-256 hash-chained audit ledger** and inspect data provenance and Apache-2.0 license details.
+
+### 5. Deploy the Container (Public Demo)
+
+The public demo at [https://nebius.helixstreet.io](https://nebius.helixstreet.io) is the single container from the root `Dockerfile` (Caddy in front of the Streamlit Command Center and the FastAPI fleet). All AI compute stays on Nebius (Token Factory inference, the Serverless GPU Parabricks job, Object Storage); the container only hosts the stateless front-end, so it can run in either of these places:
+
+```bash
+# a) Google Cloud Run (what serves nebius.helixstreet.io today; builds from source with Cloud Build)
+bash infra/deploy_cloud_run.sh
+
+# b) Nebius Serverless AI endpoint (cpu-d3 2vcpu-8gb VM in the same Nebius project as the GPU job and the bucket)
+~/.nebius/bin/nebius iam whoami              # browser login; Nebius CLI sessions expire after 12 hours
+bash infra/deploy_nebius_endpoint.sh --check # validates session, non-GPU VM quota, Container Registry, image source
+bash infra/deploy_nebius_endpoint.sh         # pushes the image (docker buildx, or crane-copies the Cloud Run image) and creates / restarts the endpoint
+```
+
+Both scripts read `~/.nebius/credentials.env`, `.env` and `.env.deploy.local` and inject the Token Factory key, the Ed25519 enclave seed and the `X-Helix-Token` as container env vars; nothing secret is baked into the image. The Nebius endpoint needs a non-GPU VM quota of at least 1 in `eu-north1` (Serverless AI endpoints are limited and billed like Compute VMs) and exposes a managed `https://` URL without a public IP.
 ---
 
 ## Public Demo API & Offline Attestation Verification
