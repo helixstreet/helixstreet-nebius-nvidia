@@ -18,7 +18,8 @@ import os
 import re
 from pathlib import Path
 
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
+from fastapi.responses import JSONResponse
 
 from fleet import clients, config
 from fleet.agents import analysis_pipeline, ingest_pipeline
@@ -330,8 +331,45 @@ def _already_processed(bucket: str, name: str, generation: str) -> bool:
     return False
 
 
+def _wants_background(body: dict) -> bool:
+    """`{"async": true}` (or `"mode": "background"`) asks for an immediate 202 and runs
+    the agents after the response — what the Command Center and push-style storage
+    notifiers with short ack deadlines need. The default stays synchronous."""
+    flag = body.get("async", body.get("mode"))
+    if isinstance(flag, str):
+        return flag.strip().lower() in ("1", "true", "yes", "async", "background")
+    return bool(flag)
+
+
+def _mark_run_queued(uid: str, pipeline_name: str, bucket: str, name: str) -> None:
+    """Records a QUEUED stage so the Command Center can show progress before the first
+    agent step lands, and starts a fresh reasoning trace so a re-run of the same sample
+    reports only its own steps, latency and cost."""
+    try:
+        clients.state_store().collection(config.COLL_STATE).document(uid).set(
+            {
+                "stage": "QUEUED",
+                "details": f"{pipeline_name} accepted for s3://{bucket}/{name}; waiting for the first agent step.",
+                "trace": [],
+                "updated": clients.SERVER_TIMESTAMP,
+            },
+            merge=True,
+        )
+    except Exception as exc:  # noqa: BLE001
+        log.debug("Could not record QUEUED stage for %s: %s", uid, exc)
+
+
+async def _run_pipeline_background(pipeline, uid: str, prompt: str, bucket: str, name: str, generation: str) -> None:
+    try:
+        await run_pipeline(pipeline, uid, prompt)
+    except Exception:  # noqa: BLE001
+        log.exception("Background pipeline %s failed for %s", pipeline.name, uid)
+        # Release the idempotency claim so a retry can reprocess the same object.
+        _event_ref(bucket, name, generation).delete()
+
+
 @app.post("/storage-event", dependencies=[Depends(_require_helix_token)])
-async def handle_storage_event(request: Request):
+async def handle_storage_event(request: Request, background_tasks: BackgroundTasks):
     body = await request.json()
     try:
         bucket, name, generation = _parse_gcs_event(body)
@@ -363,6 +401,14 @@ async def handle_storage_event(request: Request):
     if _already_processed(bucket, name, generation):
         log.info("Duplicate delivery for s3://%s/%s, skipping.", bucket, name)
         return {"status": "duplicate", "object": name}
+
+    if _wants_background(body):
+        _mark_run_queued(uid, pipeline.name, bucket, name)
+        background_tasks.add_task(_run_pipeline_background, pipeline, uid, prompt, bucket, name, generation)
+        return JSONResponse(
+            status_code=202,
+            content={"status": "accepted", "pipeline": pipeline.name, "user_id": uid, "mode": "background"},
+        )
 
     try:
         final = await run_pipeline(pipeline, uid, prompt)

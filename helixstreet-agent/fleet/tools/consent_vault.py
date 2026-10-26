@@ -1350,7 +1350,12 @@ def ingest_guideline_update(
         "guideline_version": new_guideline_version,
         "dpwg_concordance": kg["dpwg_concordance"],
         "evidence_level": kg["evidence_level"],
-        "recommendation": f"[{new_guideline_version}] {change_summary[:400]} Primary action: {kg['primary_recommendation']}",
+        "recommendation": (
+            f"Primary action: {kg['primary_recommendation']} · Governing guideline source re-checked live "
+            f"({'CHANGED' if changed else 'unchanged'} since the previous check): {new_guideline_version}"
+            if execution_mode == "live_tavily_watch"
+            else f"[{new_guideline_version}] {change_summary[:400]} Primary action: {kg['primary_recommendation']}"
+        ),
         "ranked_alternatives": kg["ranked_alternatives"],
         "guideline_summary": kg["guideline_summary"],
         "created_at": now_iso,

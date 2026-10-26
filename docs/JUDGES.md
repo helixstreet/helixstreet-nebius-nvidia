@@ -10,7 +10,7 @@ Everything below runs against the live deployment. No login is needed. Live LLM 
 2. Click **▶ Run Complete 6-Step Lifecycle Self-Test**. In about ten seconds you get a table showing: consent grant → Ed25519-signed attestation explained live by **NVIDIA Nemotron 3 Super on Nebius Token Factory** (latency and token counts shown) → signature verification → one-tap revocation → signed refusal receipt → unprompted HL7 FHIR R4 prescription alert → consent restored.
 3. Click **⚡ Ask Patient's Living Twin** (any drug in the dropdown). Read the ranked alternatives, the **verbatim passage fetched with Tavily Extract** from the published CPIC guideline, and the Nemotron summary. Click **🔐 Verify Ed25519 Signature & Receipt Hash**, then **📥 Download Signed Attestation** and verify it offline (next section).
 4. Still on the Living Twin tab, open **Step 6 · FHIR R4 Prescription Watcher** and click **Stream B: Live CPIC/DPWG Guideline Watch (Tavily)**. The twin finds the governing CPIC / ClinPGx / DPWG guideline source with Tavily Search, extracts the guideline text with Tavily Extract (the CPIC publication on PubMed Central when the publisher page blocks fetching), fingerprints it and tells you whether the guideline changed since its previous check (`execution_mode: live_tavily_watch`).
-5. In the sidebar click **Start PGx demo run**. About 45 seconds later the **Pipeline runs** tab shows the three-agent analysis with per-step model, latency, tokens and cost (Nemotron 3 Ultra for analysis and pharmacogenomics, Nemotron 3 Super for twin synthesis), and **Digital twins** lists the new twin.
+5. In the sidebar click **Start PGx demo run**. The fleet acknowledges the run immediately (HTTP 202) and the **Pipeline runs** tab shows a progress banner that refreshes itself every 4 s while the agents work (about 45 seconds). When it turns green the tab shows the three-agent analysis with per-step model, latency, tokens and cost (Nemotron 3 Ultra for analysis and pharmacogenomics, Nemotron 3 Super for twin synthesis), and **Digital twins** lists the new twin.
 6. **Pipeline runs** → select `demo-na12878` → open the **NVIDIA Clara Parabricks** inspector and the verified **Nebius L40S job log** (`aijob-e00p9xmknz4yphfvmm`, 78 records / 72 PASS in 6.049 s).
 
 ## Verify a signed attestation offline
@@ -55,7 +55,7 @@ The verifier pins the public keys published by the running fleet (`enclave_trust
 ## Tests
 
 ```bash
-cd helixstreet-agent && ../.venv/bin/python -m pytest -q    # 73 tests, no API keys needed
+cd helixstreet-agent && ../.venv/bin/python -m pytest -q    # 82 tests, no API keys needed
 ```
 
 CI runs the same suite on Python 3.11 and 3.12 on every push (`.github/workflows/ci.yml`).

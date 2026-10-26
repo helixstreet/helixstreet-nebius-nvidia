@@ -324,3 +324,121 @@ class TestOpenFDALabelAndStructures:
         assert "iptm" not in res
         assert "plddt" not in res["design_spec"]
         assert "binder_pdb_block" not in res
+
+
+def test_select_passage_prefers_paragraph_naming_both_gene_and_drug():
+    from fleet.tools.pharmacogenomics import _select_passage
+
+    raw = (
+        "# CPIC SSRI guideline\n\n"
+        "CYP2D6 extensively metabolizes fluvoxamine, paroxetine and venlafaxine into less active metabolites; "
+        "CYP2C19 allelic variants alter antidepressant biotransformation as well, which matters for dosing of several drugs.\n\n"
+        "CYP2C19 poor metabolizers taking escitalopram have greatly reduced metabolism to less active metabolites; "
+        "the recommendation is to consider an alternative antidepressant or reduce the starting dose by 50 percent.\n\n"
+        "Short line.\n"
+    )
+    both = _select_passage(raw, ["cyp2c19", "escitalopram"])
+    assert "escitalopram" in both.lower() and "cyp2c19" in both.lower()
+    # A plain string keyword keeps working (gene-only callers).
+    gene_only = _select_passage(raw, "cyp2c19")
+    assert "cyp2c19" in gene_only.lower()
+    # Headings are never returned when a body paragraph exists.
+    assert not both.startswith("#")
+
+
+def test_source_title_falls_back_to_url_for_host_concatenation_titles():
+    from fleet.tools.pharmacogenomics import _source_title
+
+    junk = {
+        "title": "cpicpgx.orgfiles.cpicpgx.orgfiles.cpicpgx.org",
+        "url": "https://files.cpicpgx.org/data/guideline/publication/SSRI/2023/37032427.pdf",
+    }
+    assert _source_title(junk) == "files.cpicpgx.org · 37032427"
+    real = {"title": "Annotation of CPIC Guideline for clopidogrel and CYP2C19", "url": "https://www.clinpgx.org/x"}
+    assert _source_title(real) == "Annotation of CPIC Guideline for clopidogrel and CYP2C19"
+    empty = {"title": "", "url": "https://cpicpgx.org/guidelines/guideline-for-clopidogrel-and-cyp2c19/"}
+    assert _source_title(empty) == "cpicpgx.org · guideline for clopidogrel and cyp2c19"
+
+
+def test_focus_passage_starts_long_paragraph_at_the_drug_sentence():
+    from fleet.tools.pharmacogenomics import _focus_passage, _select_passage
+
+    filler = "CYP2D6 extensively metabolizes fluvoxamine, paroxetine, venlafaxine and vortioxetine into less active metabolites. "
+    opening = "Patients may be predisposed to poor therapeutic outcomes due to having CYP2D6, CYP2C19 or CYP2B6 allelic variants. "
+    drug_sentence = (
+        "CYP2C19 poor metabolizers have greatly reduced metabolism of escitalopram and citalopram; "
+        "the recommendation is to consider an alternative antidepressant or reduce the starting dose by 50 percent."
+    )
+    paragraph = opening + filler * 12 + drug_sentence  # the drug is mentioned only after ~1,400 characters
+    focused = _focus_passage(paragraph, ["cyp2c19", "escitalopram"], 900)
+    assert focused.lower().startswith("cyp2c19 poor metabolizers have greatly reduced metabolism of escitalopram")
+    assert len(focused) <= 900
+    # Short paragraphs are returned untouched.
+    assert _focus_passage(drug_sentence, ["cyp2c19", "escitalopram"], 900) == drug_sentence
+    # End to end: the selected quote for the pair shows the drug within the visible excerpt.
+    chosen = _select_passage("Intro.\n\n" + paragraph + "\n\nUnrelated CYP2C9 warfarin paragraph with dosing recommendations for poor metabolizers of warfarin that is long enough to be a body paragraph.", ["cyp2c19", "escitalopram"])
+    assert "escitalopram" in chosen.lower()
+
+
+def test_watch_prefers_published_article_over_pdf_and_docx_drafts(monkeypatch):
+    import tempfile
+
+    import requests
+
+    from fleet import clients, config
+    from fleet.tools.pharmacogenomics import watch_guideline_updates
+
+    with tempfile.TemporaryDirectory() as tmp:
+        monkeypatch.setattr(config, "DATA_DIR", tmp)
+        monkeypatch.setattr(config, "HELIX_DATA_DIR", tmp)
+        clients.state_store.cache_clear()
+        monkeypatch.setenv("TAVILY_API_KEY", "tvly-test-key")
+        extract_batches: list[list[str]] = []
+
+        class FakeResp:
+            status_code = 200
+
+            def __init__(self, payload):
+                self._payload = payload
+
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return self._payload
+
+        def fake_post(url, headers=None, json=None, timeout=None):
+            if url.endswith("/search"):
+                return FakeResp(
+                    {
+                        "results": [
+                            {"title": "Annotation of CPIC Guideline for escitalopram", "url": "https://www.clinpgx.org/guidelineAnnotation/PA166127638", "content": "c", "score": 0.9},
+                            {"title": "cpicpgx.orgfiles.cpicpgx.org", "url": "https://cpicpgx.org/wp-content/uploads/2022/11/SSRI_guideline_for-CPIC-review_11082022.docx", "content": "c", "score": 0.8},
+                            {"title": "CPIC SSRI 2015 PDF", "url": "https://cpicpgx.org/content/guideline/publication/SSRI/2015/25974703.pdf", "content": "c", "score": 0.7},
+                        ]
+                    }
+                )
+            extract_batches.append(list(json["urls"]))
+            results = [
+                {"url": u, "raw_content": f"Intro.\n\nCYP2C19 poor metabolizers taking escitalopram: the recommendation is a 50 percent dose reduction, per the text hosted at {u}."}
+                for u in json["urls"]
+                if "clinpgx.org" not in u  # the annotation page blocks fetching; the article and the documents extract fine
+            ]
+            failed = [{"url": u, "error": "Failed to fetch url"} for u in json["urls"] if "clinpgx.org" in u]
+            return FakeResp({"results": results, "failed_results": failed})
+
+        monkeypatch.setattr(requests, "post", fake_post)
+        res = watch_guideline_updates("escitalopram", "CYP2C19", fallback_url="https://pmc.ncbi.nlm.nih.gov/articles/PMC10564324/")
+        assert res["execution_mode"] == "live_tavily_watch"
+        # One batched extract covering the page, the published article and both documents.
+        assert extract_batches and set(extract_batches[0]) == {
+            "https://www.clinpgx.org/guidelineAnnotation/PA166127638",
+            "https://pmc.ncbi.nlm.nih.gov/articles/PMC10564324/",
+            "https://cpicpgx.org/wp-content/uploads/2022/11/SSRI_guideline_for-CPIC-review_11082022.docx",
+            "https://cpicpgx.org/content/guideline/publication/SSRI/2015/25974703.pdf",
+        }
+        assert res["passage"]["url"] == "https://pmc.ncbi.nlm.nih.gov/articles/PMC10564324/"
+        assert res["passage"]["fallback_used"] is True
+        assert res["extract_failed_urls"] == ["https://www.clinpgx.org/guidelineAnnotation/PA166127638"]
+        # Junk host-concatenation titles are replaced by a readable title derived from the URL.
+        assert res["sources"][1]["title"] == "cpicpgx.org · SSRI guideline for CPIC review 11082022"

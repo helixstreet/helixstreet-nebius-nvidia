@@ -17,7 +17,7 @@
 
 <p align="center">
   <a href="https://github.com/helixstreet/helixstreet-nebius-nvidia/actions/workflows/ci.yml"><img src="https://github.com/helixstreet/helixstreet-nebius-nvidia/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/tests-73%20passing-brightgreen" alt="73 tests">
+  <img src="https://img.shields.io/badge/tests-82%20passing-brightgreen" alt="82 tests">
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="Apache-2.0">
   <a href="https://nebius.helixstreet.io"><img src="https://img.shields.io/badge/live%20demo-nebius.helixstreet.io-0e7490" alt="Live demo"></a>
 </p>
@@ -264,7 +264,7 @@ Open [http://localhost:8080](http://localhost:8080) (or the live deployment at [
 | `POST https://nebius.helixstreet.io/api/ask` | none (daily quota) | Consent-gated, Ed25519-signed phenotype attestation; `"use_nemotron": true` calls **Nemotron 3 Super** live on Token Factory |
 | `POST https://nebius.helixstreet.io/api/verify` | none | Verifies a bundle against the trusted enclave keys (optionally pin `trusted_public_key_ed25519`) |
 | `GET https://nebius.helixstreet.io/api/guidelines/watch?drug=clopidogrel&gene=CYP2C19` | none | Live Tavily guideline watch: domain-restricted Search for the governing CPIC / ClinPGx / DPWG source + Extract of the guideline text (PMC fallback) + fingerprint (no alert raised) |
-| `POST /api/consents/grant`, `/api/consents/revoke`, `/api/rwe/outcome`, `/api/guidelines/update`, `/api/a2a/negotiate`, `/api/storage-event` | `X-Helix-Token` | State-mutating endpoints; the public demo uses a private token (the repo default is for local development only) |
+| `POST /api/consents/grant`, `/api/consents/revoke`, `/api/rwe/outcome`, `/api/guidelines/update`, `/api/a2a/negotiate`, `/api/storage-event` | `X-Helix-Token` | State-mutating endpoints; the public demo uses a private token (the repo default is for local development only). `/api/storage-event` with `"async": true` answers **HTTP 202** at once and runs the agent pipeline in the background (what the Command Center's run buttons use); without the flag it stays synchronous. |
 
 ```bash
 # 1. Ask the live enclave for a signed attestation (Nemotron 3 Super explains it; the numbers come from the Knowledge Graph)

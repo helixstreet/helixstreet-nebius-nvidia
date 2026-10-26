@@ -466,3 +466,68 @@ def test_fastapi_endpoints_and_token_auth(monkeypatch):
     assert q1["allowed"] is True
     assert q2["allowed"] is True
     assert q3["allowed"] is False
+
+
+def test_storage_event_background_mode_acknowledges_then_runs(monkeypatch):
+    """`async: true` must answer 202 immediately, record a QUEUED stage, run the pipeline
+    after the response, keep the idempotency guard, and release the claim on failure."""
+    import secrets as _secrets
+
+    from fleet.tools.memory import get_pipeline_state
+
+    client = TestClient(app_main.app)
+    auth_headers = {"X-Helix-Token": config.HELIX_API_TOKEN}
+    uid = f"bg-{_secrets.token_hex(3)}"
+    name = f"uploads/{uid}/pgx-panel.vcf"
+    calls: list[tuple[str, str]] = []
+
+    async def fake_run_pipeline(pipeline, user_id, prompt):
+        calls.append((pipeline.name, user_id))
+        return {"ok": True}
+
+    monkeypatch.setattr(app_main, "run_pipeline", fake_run_pipeline)
+    from fleet.tools.memory import append_trace
+
+    append_trace(uid, {"t": "earlier", "agent": "previous-run", "type": "message"})  # stale steps from an earlier run
+    r = client.post(
+        "/storage-event",
+        headers=auth_headers,
+        json={"bucket": "demo-bucket", "name": name, "generation": "1", "async": True},
+    )
+    assert r.status_code == 202
+    assert r.json()["status"] == "accepted" and r.json()["user_id"] == uid
+    assert calls == [("helixstreet_analysis_fleet", uid)]  # ran after the response was sent
+    assert "QUEUED" in get_pipeline_state(uid)
+    state_doc = clients.state_store().collection(config.COLL_STATE).document(uid).get().to_dict()
+    assert state_doc["trace"] == []  # a new run starts with a fresh trace (no double-counted steps or cost)
+
+    # The same object/generation is still treated as a duplicate delivery.
+    r_dup = client.post(
+        "/storage-event",
+        headers=auth_headers,
+        json={"bucket": "demo-bucket", "name": name, "generation": "1", "async": True},
+    )
+    assert r_dup.status_code == 200 and r_dup.json()["status"] == "duplicate"
+    assert len(calls) == 1
+
+    # A failing background run releases the idempotency claim so a retry can reprocess it.
+    async def failing_run_pipeline(pipeline, user_id, prompt):
+        raise RuntimeError("simulated agent failure")
+
+    monkeypatch.setattr(app_main, "run_pipeline", failing_run_pipeline)
+    r_fail = client.post(
+        "/storage-event",
+        headers=auth_headers,
+        json={"bucket": "demo-bucket", "name": name, "generation": "2", "mode": "background"},
+    )
+    assert r_fail.status_code == 202
+    assert not app_main._event_ref("demo-bucket", name, "2").get().exists
+
+    # Without the flag the endpoint stays synchronous and returns the pipeline summary.
+    monkeypatch.setattr(app_main, "run_pipeline", fake_run_pipeline)
+    r_sync = client.post(
+        "/storage-event",
+        headers=auth_headers,
+        json={"bucket": "demo-bucket", "name": name, "generation": "3"},
+    )
+    assert r_sync.status_code == 200 and r_sync.json()["status"] == "completed"

@@ -318,10 +318,17 @@ def _trim_passage(text: str, limit: int = 900) -> str:
     return (cut[:idx] if idx > 0 else cut).rstrip(",;: ") + " …"
 
 
-def _select_passage(raw_content: str, keyword: str) -> str:
-    """Picks the most recommendation-like paragraph mentioning `keyword` from extracted
-    guideline text: skips headings and very short lines, prefers paragraphs that also
-    talk about recommendations / dosing / metabolizer status, then trims at a sentence."""
+def _keywords(keyword: "str | list[str] | tuple[str, ...] | None") -> list[str]:
+    """Normalises the passage keyword(s): a phenotype word, or gene + drug for the watch."""
+    raw = [keyword] if isinstance(keyword, str) or keyword is None else list(keyword)
+    return [k.strip().lower() for k in raw if isinstance(k, str) and k.strip()] or ["poor"]
+
+
+def _select_passage(raw_content: str, keyword: "str | list[str] | tuple[str, ...]") -> str:
+    """Picks the most recommendation-like paragraph from extracted guideline text:
+    skips headings and very short lines, scores paragraphs by how many of the keywords
+    they mention (gene AND drug beat gene alone), then by recommendation / dosing
+    language and metabolizer status, and trims the winner at a sentence boundary."""
     paras = [
         re.sub(r"\s+", " ", p).strip()
         for p in re.split(r"\n\s*\n|\r\n\s*\r\n", raw_content or "")
@@ -330,25 +337,39 @@ def _select_passage(raw_content: str, keyword: str) -> str:
     if not paras:
         return _trim_passage(raw_content or "", 900)
     body = [p for p in paras if not p.startswith("#") and len(p) >= 160] or paras
-    kw = (keyword or "poor").lower()
-    tiers = (
-        lambda p: kw in p and "metabolizer" in p and any(t in p for t in ("recommend", "dosing", "dose")),
-        lambda p: kw in p and any(t in p for t in ("recommend", "dosing", "dose", "metabolizer")),
-        lambda p: kw in p,
-        lambda p: "guideline" in p or "cpic" in p,
-    )
-    for cond in tiers:
-        for p in body:
-            if cond(p.lower()):
-                return _trim_passage(p, 900)
-    return _trim_passage(body[0], 900)
+    kws = _keywords(keyword)
+
+    def _score(p: str) -> tuple[int, bool, bool, bool]:
+        pl = p.lower()
+        return (
+            sum(1 for k in kws if k in pl),
+            any(t in pl for t in ("recommend", "dosing", "dose")),
+            "metabolizer" in pl,
+            "guideline" in pl or "cpic" in pl,
+        )
+
+    best = max(body, key=_score)  # ties keep document order (max returns the first maximum)
+    return _focus_passage(best, kws, 900)
 
 
-def _cache_id(url: str, keyword: str) -> str:
-    return hashlib.sha256(f"{url}|{(keyword or '').lower()}".encode("utf-8")).hexdigest()[:32]
+def _focus_passage(paragraph: str, kws: list[str], limit: int = 900) -> str:
+    """Long guideline paragraphs often open with other genes or drugs; when the winning
+    paragraph exceeds `limit`, the quote starts at the first sentence that mentions the
+    most keywords (e.g. the drug itself) so the visible excerpt is about the queried pair."""
+    text = re.sub(r"\s+", " ", paragraph or "").strip()
+    if len(text) <= limit:
+        return text
+    sentences = re.split(r"(?<=[.!?])\s+(?=[A-Z(_*])", text)
+    hits = [sum(1 for k in kws if k in s.lower()) for s in sentences]
+    start = hits.index(max(hits)) if any(hits) else 0
+    return _trim_passage(" ".join(sentences[start:]), limit)
 
 
-def extract_guideline_passages(urls: list[str], keyword: str = "poor") -> dict[str, dict]:
+def _cache_id(url: str, keyword: "str | list[str] | tuple[str, ...]") -> str:
+    return hashlib.sha256(f"{url}|{'|'.join(_keywords(keyword))}".encode("utf-8")).hexdigest()[:32]
+
+
+def extract_guideline_passages(urls: list[str], keyword: "str | list[str] | tuple[str, ...]" = "poor") -> dict[str, dict]:
     """Tavily Extract (`POST https://api.tavily.com/extract`, `extract_depth: "advanced"`)
     for several URLs in ONE request, with a 24-hour per-URL cache in the Memory Bank.
     Returns `{url: passage}` only for URLs whose text could be extracted; publisher
@@ -426,6 +447,22 @@ def fetch_guideline_passage_tavily(url: str, phenotype_keyword: str = "poor") ->
 GUIDELINE_WATCH_DOMAINS = ["cpicpgx.org", "clinpgx.org", "pharmgkb.org", "knmp.nl"]
 
 
+def _source_title(r: dict) -> str:
+    """Readable title for a search hit. Tavily occasionally returns the concatenated
+    host names instead of a page title (typically for PDFs), in which case the title
+    is derived from the URL path instead."""
+    from urllib.parse import unquote, urlparse
+
+    title = re.sub(r"\s+", " ", (r.get("title") or "")).strip()
+    looks_like_hosts = bool(title) and " " not in title and title.count(".") >= 2
+    if title and not looks_like_hosts:
+        return title[:200]
+    parsed = urlparse(r.get("url") or "")
+    tail = unquote(parsed.path.rstrip("/").rsplit("/", 1)[-1])
+    tail = re.sub(r"[-_]+", " ", re.sub(r"\.(pdf|docx?|html?)$", "", tail, flags=re.I)).strip()
+    return (f"{parsed.netloc} · {tail}" if tail and tail != parsed.netloc else parsed.netloc)[:200]
+
+
 def _guideline_source_rank(r: dict) -> tuple:
     """Prefers the canonical CPIC guideline HTML page, then ClinPGx/PharmGKB guideline
     annotations, then DPWG, then anything else from the publisher domains; PDFs last."""
@@ -492,7 +529,7 @@ def watch_guideline_updates(drug: str, gene: str, max_results: int = 5, fallback
 
     sources = [
         {
-            "title": (r.get("title") or "").strip()[:200],
+            "title": _source_title(r),
             "url": r.get("url") or "",
             "snippet": (r.get("content") or "").strip()[:280],
             "score": r.get("score"),
@@ -504,10 +541,15 @@ def watch_guideline_updates(drug: str, gene: str, max_results: int = 5, fallback
     ]
     passage: dict = {}
     failed: list[str] = []
-    candidates = [s["url"] for s in sources[:3]]
-    if fallback_url and fallback_url not in candidates:
-        candidates.append(fallback_url)
-    extracted_all = extract_guideline_passages(candidates, gene_sym.lower()) if candidates else {}
+    # Extraction order: guideline web pages first, then the published guideline article
+    # the Knowledge Graph cites (PubMed Central), and only then PDFs / DOCX drafts that
+    # the publishers also host — so a quote comes from the published text whenever the
+    # publisher pages block automated fetching.
+    top_urls = [s["url"] for s in sources[:3]]
+    pages = [u for u in top_urls if not re.search(r"\.(pdf|docx?)(\?|$)", u, flags=re.I)]
+    documents = [u for u in top_urls if u not in pages]
+    candidates = pages + ([fallback_url] if fallback_url and fallback_url not in pages else []) + [u for u in documents if u != fallback_url]
+    extracted_all = extract_guideline_passages(candidates, [gene_sym.lower(), drug_name]) if candidates else {}
     for cand in candidates:
         extracted = extracted_all.get(cand) or {}
         if extracted.get("text"):

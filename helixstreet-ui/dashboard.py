@@ -227,7 +227,9 @@ AGENT_MODEL_META = _agent_model_meta()
 
 def _trigger_fleet_storage_event(bucket: str, name: str, generation: str) -> tuple[bool, str]:
     """Posts the storage finalization event to the fleet service with `X-Helix-Token`
-    and surfaces HTTP status codes instead of swallowing errors."""
+    and surfaces HTTP status codes instead of swallowing errors. `async: true` makes the
+    fleet acknowledge immediately (HTTP 202) and run the agents in the background, so
+    the Command Center stays responsive and the Pipeline runs tab can show live progress."""
     headers: dict[str, str] = {}
     if fleet_config.HELIX_API_TOKEN:
         headers["X-Helix-Token"] = fleet_config.HELIX_API_TOKEN
@@ -236,11 +238,13 @@ def _trigger_fleet_storage_event(bucket: str, name: str, generation: str) -> tup
         resp = requests.post(
             url,
             headers=headers,
-            json={"bucket": bucket, "name": name, "generation": str(generation)},
-            timeout=180,
+            json={"bucket": bucket, "name": name, "generation": str(generation), "async": True},
+            timeout=60,
         )
         if resp.status_code >= 400:
             return False, f"Fleet webhook returned HTTP {resp.status_code}: {resp.text[:240]}"
+        if resp.status_code == 202:
+            return True, "Fleet accepted the run (HTTP 202); the Nemotron agents are working in the background."
         return True, f"Triggered {url} (HTTP {resp.status_code})"
     except requests.exceptions.ReadTimeout:
         return True, "Pipeline triggered and running asynchronously on the fleet service."
@@ -463,7 +467,7 @@ def render_sidebar() -> int:
                 ok, msg = start_demo_run(user_id)
             if ok:
                 st.session_state["last_triggered_run"] = {"user_id": user_id, "started": time.time(), "kind": "WGS demo"}
-                st.success(f"{msg} Track it in the **Pipeline runs** tab (about 1–2 minutes).")
+                st.success(f"{msg} Open the **Pipeline runs** tab for live progress (about 1–2 minutes).")
             else:
                 st.error(msg)
 
@@ -501,7 +505,7 @@ def render_sidebar() -> int:
                         ok, msg = _trigger_fleet_storage_event(DATA_BUCKET, f"uploads/{pgx_uid}/pgx-panel.vcf", gen)
                         if ok:
                             st.session_state["last_triggered_run"] = {"user_id": pgx_uid, "started": time.time(), "kind": "PGx panel"}
-                            st.success(f"Uploaded PGx panel as '{pgx_uid}'. {msg} Track it in the **Pipeline runs** tab (about 45 seconds).")
+                            st.success(f"Uploaded PGx panel as '{pgx_uid}'. {msg} Open the **Pipeline runs** tab for live progress (about 45 seconds).")
                         else:
                             st.error(msg)
                     except Exception as e:
@@ -580,6 +584,64 @@ def render_kpi_row() -> None:
         )
 
 
+_RUN_FINISHED_STAGES = ("TWIN_SAVED", "TWIN_PERSISTED")
+_RUN_TERMINAL_STAGES = _RUN_FINISHED_STAGES + ("FAILED",)
+_TIER_LABELS = {
+    fleet_config.NEMOTRON_NANO_MODEL: "Nemotron 3 Nano",
+    fleet_config.NEMOTRON_SUPER_MODEL: "Nemotron 3 Super",
+    fleet_config.NEMOTRON_ULTRA_MODEL: "Nemotron 3 Ultra",
+}
+
+
+def _render_run_progress(triggered: dict[str, Any]) -> None:
+    """Self-refreshing progress banner for the run last triggered from the sidebar.
+    The fleet acknowledges a trigger immediately and runs the agents in the background,
+    so this fragment polls the Memory Bank every few seconds while the run is in flight
+    and forces one full rerun when it finishes so the tables below pick the run up."""
+
+    def _lookup() -> dict[str, Any]:
+        snap = state_store_client().collection("pipeline_state").document(triggered["user_id"]).get()
+        return snap.to_dict() if snap.exists else {}
+
+    polling = _lookup().get("stage", "QUEUED") not in _RUN_TERMINAL_STAGES
+
+    @st.fragment(run_every="4s" if polling else None)
+    def _banner() -> None:
+        t_state = _lookup()
+        stage = t_state.get("stage", "QUEUED")
+        elapsed = int(time.time() - float(triggered.get("started", time.time())))
+        trace = t_state.get("trace") or []
+        n_steps = len(trace)
+        last = trace[-1] if trace else {}
+        if stage == "QUEUED" and n_steps:
+            stage = "RUNNING"
+        now_txt = ""
+        if last:
+            model_id = str(last.get("model") or "")
+            model_short = _TIER_LABELS.get(model_id, model_id.split("/")[-1])
+            step_txt = f"tool `{last.get('tool')}`" if last.get("tool") else str(last.get("type") or "step")
+            now_txt = f" · now `{last.get('agent', '?')}` → {step_txt}" + (f" ({model_short})" if model_short else "")
+        col_prog, col_btn = st.columns([5, 1], vertical_alignment="center")
+        if stage in _RUN_FINISHED_STAGES:
+            col_prog.success(
+                f"✅ **{triggered['kind']} run `{triggered['user_id']}` finished** in ~{elapsed}s · {n_steps} persisted agent steps · "
+                "the twin is now listed in **Digital twins** and the trace is selected below."
+            )
+        elif stage == "FAILED":
+            col_prog.error(f"❌ Run `{triggered['user_id']}` failed after {elapsed}s — inspect the trace below.")
+        else:
+            col_prog.info(
+                f"⏳ **{triggered['kind']} run `{triggered['user_id']}` in progress** · stage `{stage}` · {n_steps} agent steps so far{now_txt} · "
+                f"{elapsed}s elapsed. Nemotron agents are running on Nebius Token Factory; this banner refreshes every 4 s."
+            )
+        if col_btn.button("🔄 Refresh", key="btn_refresh_run"):
+            st.rerun()
+        if polling and stage in _RUN_TERMINAL_STAGES:
+            st.rerun()  # the run just finished: a full rerun refreshes the overview table and trace selector
+
+    _banner()
+
+
 def render_pipeline_runs() -> None:
     """Tab 1: Pipeline runs (upload -> Parabricks -> 3 tiers -> twin) + Telemetry-derived economics."""
     states = collection_dicts("pipeline_state")
@@ -628,25 +690,7 @@ def render_pipeline_runs() -> None:
 
     triggered = st.session_state.get("last_triggered_run")
     if triggered:
-        t_state = next((s for s in states if s["id"] == triggered["user_id"]), None)
-        stage = (t_state or {}).get("stage", "QUEUED")
-        elapsed = int(time.time() - float(triggered.get("started", time.time())))
-        n_steps = len((t_state or {}).get("trace") or [])
-        col_prog, col_btn = st.columns([5, 1], vertical_alignment="center")
-        if stage in ("TWIN_SAVED", "TWIN_PERSISTED"):
-            col_prog.success(
-                f"✅ **{triggered['kind']} run `{triggered['user_id']}` finished** in ~{elapsed}s · {n_steps} persisted agent steps · "
-                "the twin is now listed in **Digital twins**."
-            )
-        elif stage == "FAILED":
-            col_prog.error(f"❌ Run `{triggered['user_id']}` failed after {elapsed}s — inspect the trace below.")
-        else:
-            col_prog.info(
-                f"⏳ **{triggered['kind']} run `{triggered['user_id']}` in progress** · stage `{stage}` · {n_steps} agent steps so far · "
-                f"{elapsed}s elapsed. Nemotron agents are running on Nebius Token Factory; click **Refresh** to update."
-            )
-        if col_btn.button("🔄 Refresh", key="btn_refresh_run"):
-            st.rerun()
+        _render_run_progress(triggered)
 
     if not states:
         st.info("No pipeline runs yet — click **Start demo run** or **Start PGx demo run** in the sidebar.")
@@ -1904,8 +1948,9 @@ def render_living_twin() -> None:
                             )
                             if g_passage.get("fallback_used"):
                                 st.caption(
-                                    "The publisher page blocks automated fetching, so the passage was extracted from the "
-                                    "CPIC publication on PubMed Central (the Knowledge Graph's guideline_url)."
+                                    "The publisher's guideline pages block automated fetching, so the quote comes from the "
+                                    "published CPIC guideline article on PubMed Central (the Knowledge Graph's guideline_url), "
+                                    "which is preferred over PDF / DOCX copies of the guideline."
                                 )
                     else:
                         st.error(
