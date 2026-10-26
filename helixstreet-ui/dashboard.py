@@ -471,7 +471,7 @@ def render_sidebar() -> int:
             else:
                 st.error(msg)
 
-        st.markdown("**Demo 2: Pharmacogenomics panel (~20s)**")
+        st.markdown("**Demo 2: Pharmacogenomics panel (~45 s)**")
         st.caption(
             "Uploads a synthetic 6-variant CPIC PGx genotype directly to the analysis fleet. "
             "NVIDIA Nemotron 3 Ultra screens star alleles against CPIC Level-A guidance and "
@@ -647,6 +647,12 @@ def render_pipeline_runs() -> None:
     states = collection_dicts("pipeline_state")
     econ_all = telemetry.aggregate_all()
 
+    # Live progress of the run the visitor just triggered goes first, above the fold,
+    # so a judge who clicks a sidebar button and opens this tab sees the agents working.
+    triggered = st.session_state.get("last_triggered_run")
+    if triggered:
+        _render_run_progress(triggered)
+
     with st.container(border=True):
         st.subheader(":material/speed: Telemetry-Derived 3-Tier Routing Economics (Nebius Token Factory)")
         measured_note = (
@@ -687,10 +693,6 @@ def render_pipeline_runs() -> None:
                 "Deep genomic & CPIC reasoning",
                 border=True,
             )
-
-    triggered = st.session_state.get("last_triggered_run")
-    if triggered:
-        _render_run_progress(triggered)
 
     if not states:
         st.info("No pipeline runs yet — click **Start demo run** or **Start PGx demo run** in the sidebar.")
