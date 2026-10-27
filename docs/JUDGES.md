@@ -1,6 +1,6 @@
 # Helixstreet — 5-Minute Judge Guide
 
-3-minute demo video: **https://youtu.be/9Sf8PcuJhxU** · Live demo: **https://nebius.helixstreet.io** · API explorer: **https://nebius.helixstreet.io/api/docs** · Health + enclave keys: **https://nebius.helixstreet.io/api/healthz** · Same container on Nebius AI Cloud (Serverless AI endpoint, eu-west1, running during the judging window): **https://port8080-e6d5g79dfjp897z.tunnel.applications.eu-west1.nebius.cloud**
+3-minute demo video: **https://youtu.be/W6vxx4pf8_U** · Live demo: **https://nebius.helixstreet.io** · API explorer: **https://nebius.helixstreet.io/api/docs** · Health + enclave keys: **https://nebius.helixstreet.io/api/healthz** · Same container on Nebius AI Cloud (Serverless AI endpoint, eu-west1, running during the judging window): **https://port8080-e6d5g79dfjp897z.tunnel.applications.eu-west1.nebius.cloud**
 
 Everything below runs against the live deployment. The Nebius-hosted mirror behaves identically (same image, same enclave key, its own run history and daily quota). No login is needed. Live LLM calls share a daily quota; when it is exhausted the UI says so and falls back to the deterministic guideline template (clearly labelled).
 
@@ -8,7 +8,7 @@ Everything below runs against the live deployment. The Nebius-hosted mirror beha
 
 ## The 5-minute path
 
-If you have three minutes before clicking anything, the demo video walks exactly this path with narration: https://youtu.be/9Sf8PcuJhxU.
+If you have three minutes before clicking anything, the demo video walks exactly this path with narration: https://youtu.be/W6vxx4pf8_U.
 
 1. Open the demo. The first tab, **Living Twin & Consent Gate**, is the product: a sealed genome answering a pharmacy's drug-safety question without releasing raw genome bytes.
 2. Click **▶ Run Complete 6-Step Lifecycle Self-Test**. In about ten seconds you get a table showing: consent grant → Ed25519-signed attestation explained live by **NVIDIA Nemotron 3 Super on Nebius Token Factory** (latency and token counts shown) → signature verification → one-tap revocation → signed refusal receipt → unprompted HL7 FHIR R4 prescription alert → consent restored.

@@ -9,7 +9,7 @@
   <b>Nebius x NVIDIA Global AI Hackathon Submission — Best Apps and Agents Track</b><br>
   Apache-2.0 License · Built with NVIDIA Nemotron 3 (Nano 30B · Super 120B · Ultra 550B) on Nebius Token Factory<br>
   🌐 <b>Live Command Center Demo:</b> <a href="https://nebius.helixstreet.io">https://nebius.helixstreet.io</a><br>
-  🎬 <b>3-minute demo video (YouTube, unlisted):</b> <a href="https://youtu.be/9Sf8PcuJhxU">https://youtu.be/9Sf8PcuJhxU</a><br>
+  🎬 <b>3-minute demo video (YouTube, unlisted):</b> <a href="https://youtu.be/W6vxx4pf8_U">https://youtu.be/W6vxx4pf8_U</a><br>
   ☁️ <b>Same container on Nebius AI Cloud (Serverless AI endpoint, eu-west1; started for the judging window (Dec 1–15) and stopped otherwise to conserve credits):</b> <a href="https://port8080-e6d5g79dfjp897z.tunnel.applications.eu-west1.nebius.cloud">https://port8080-e6d5g79dfjp897z.tunnel.applications.eu-west1.nebius.cloud</a>
 </p>
 
@@ -22,7 +22,7 @@
   <img src="https://img.shields.io/badge/tests-92%20passing-brightgreen" alt="92 tests">
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="Apache-2.0">
   <a href="https://nebius.helixstreet.io"><img src="https://img.shields.io/badge/live%20demo-nebius.helixstreet.io-0e7490" alt="Live demo"></a>
-  <a href="https://youtu.be/9Sf8PcuJhxU"><img src="https://img.shields.io/badge/demo%20video-2%3A58%20on%20YouTube-red" alt="Demo video"></a>
+  <a href="https://youtu.be/W6vxx4pf8_U"><img src="https://img.shields.io/badge/demo%20video-2%3A58%20on%20YouTube-red" alt="Demo video"></a>
 </p>
 
 **Judges: start with [docs/JUDGES.md](docs/JUDGES.md)** — a 5-minute path through the live demo, what is live versus simulated, and how to verify a signed attestation offline.
