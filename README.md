@@ -183,7 +183,7 @@ Object Storage (s3://<bucket>)
 │   │       ├── memory.py                    # Memory Bank + deterministic Merkle vault verification
 │   │       ├── audit.py                     # SHA-256 hash-chained tamper-evident audit ledger
 │   │       └── storage.py                   # Storage text & SHA-256 fingerprinting helpers
-│   └── tests/                               # 86 automated unit & integration tests (pytest)
+│   └── tests/                               # 92 automated unit & integration tests (pytest)
 ├── helixstreet-ui/
 │   └── dashboard.py                         # Streamlit Command Center (7 live tabs + Living Twin & Consent Gate + 3Dmol.js)
 ├── infra/
