@@ -1521,7 +1521,7 @@ def render_living_twin() -> None:
                             "Model / Engine": "Ed25519 RFC-8032",
                             "Latency & Tokens": "0 tokens (cryptographic check)",
                             "Receipt / Alert ID": b_grant["attestation"]["attestation_id"],
-                            "Ed25519 Signed": f"✓ {b_grant['attestation']['signature_ed25519'][:18]}…",
+                            "Ed25519 Signed": f"✓ {b_grant['signature_ed25519'][:18]}…",
                         },
                         {
                             "Step": "5 · 1-Tap Revocation & Repeated Ask",
