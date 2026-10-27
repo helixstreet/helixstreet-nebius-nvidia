@@ -18,3 +18,7 @@ gatherUsageStats = false
 
 [client]
 toolbarMode = "minimal"
+
+[server]
+# BYO-VCF uploads are capped at 50 MB before they are buffered (the app checks the same limit)
+maxUploadSize = 50

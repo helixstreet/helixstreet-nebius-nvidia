@@ -8,3 +8,11 @@
 docs/*.mp3
 *.mp4
 *.wav
+# never bake key material or local env files into an image (mirrors .gcloudignore)
+*.seed
+.env
+.env.*
+credentials*
+*.key
+*.pem
+token.txt

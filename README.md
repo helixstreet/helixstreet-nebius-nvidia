@@ -14,7 +14,7 @@
 
 ---
 
-> **Executive Summary:** **Helixstreet is a consent-native pharmacogenomics layer. A patient's genome stays sealed in their own vault; Helixstreet's multi-agent system computes guideline-grounded phenotype attestations inside a sealed software vault (no hardware TEE yet) and releases only a signed, auditable answer — *"CYP2C19 poor metabolizer, CPIC 2024, evidence level 1A"* — to the clinician, pharmacy or AI that asked (`0 bytes raw genome released to requesters`). Variant summaries are sent to Nebius Token Factory for inference; raw BAM/VCF never leave the bucket; enable Token Factory Zero Data Retention for production. Every access is purpose-bound, time-limited and recorded on a tamper-evident ledger. The twin watches new prescriptions and guideline updates for life, flagging actionable interactions months before harm.**
+> **Executive Summary:** A patient leaves the cath lab with a new coronary stent and a clopidogrel prescription. The pharmacy asks Helixstreet whether the drug is safe and gets back a signed answer, *"CYP2C19 poor metabolizer, CPIC 2024, evidence level 1A: prasugrel or ticagrelor instead"*, without ever seeing the genome. **Helixstreet is a consent-native pharmacogenomics layer:** the genome stays sealed in the patient's own vault; a multi-agent system computes guideline-grounded phenotype attestations inside a sealed software vault (no hardware TEE yet) and releases only that signed, auditable answer to the clinician, pharmacy or AI that asked (`0 bytes raw genome released to requesters`). Variant summaries are sent to Nebius Token Factory for inference; raw BAM/VCF never leave the bucket; enable Token Factory Zero Data Retention for production. Every access is purpose-bound, time-limited and recorded on a tamper-evident ledger. The twin watches new prescriptions and guideline updates for life, flagging actionable interactions months before harm.
 
 <p align="center">
   <a href="https://github.com/helixstreet/helixstreet-nebius-nvidia/actions/workflows/ci.yml"><img src="https://github.com/helixstreet/helixstreet-nebius-nvidia/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
@@ -84,7 +84,7 @@ Following the **Best Apps and Agents Track** architecture guidelines (*"Reach fo
 | **Tier 3** · `helixstreet_analyst` | Analysis | `nvidia/Nemotron-3-Ultra-550b-a55b` | **$1.00 / $3.00** | Deep scientific reasoning: parses multi-sample VCFs, cross-references Ensembl 1000 Genomes Phase 3 global & super-population allele frequencies (`ALL`, `AFR`, `AMR`, `EAS`, `EUR`, `SAS`), reconciles 1-based VCF `POS` vs 0-based GA4GH `start_position`, and seals the Merkle commitment root. |
 | **Tier 3** · `helixstreet_pharmacist` | Analysis | `nvidia/Nemotron-3-Ultra-550b-a55b` | **$1.00 / $3.00** | Clinical-grade pharmacogenomic reasoning: evaluates zygosity (`0/1` vs `1/1`), maps star alleles to metabolizer phenotypes across CPIC Level-A genes, prioritizes life-critical toxicity flags (`DPYD *2A` fluoropyrimidine toxicity, `CYP2C19 *2/*2` clopidogrel activation failure), and synthesizes live Europe PMC + Tavily clinical evidence. |
 
-Across our two seeded pipeline runs in `seed_data` (`demo-na12878` and `pgx-demo-001`, `2 runs, measured 2026-10-25` via `telemetry.aggregate_all()`), right-sized 3-tier routing consumed `230,494` prompt tokens and `13,978` completion tokens at **$0.17111 total ($0.08556 mean/run) vs. $0.27243 on an All-Ultra baseline — a measured 37.2% token cost reduction** (`40.4%` on `demo-na12878` and `32.5%` on `pgx-demo-001`).
+Across our two seeded pipeline runs in `seed_data` (`demo-na12878` and `pgx-demo-001`, `2 runs, measured 2026-10-25` via `telemetry.aggregate_all()`), right-sized 3-tier routing consumed `230,494` prompt tokens and `13,978` completion tokens at **$0.17111 total ($0.08556 mean/run) vs. $0.27243 on an All-Ultra baseline — a measured 37.2% token cost reduction** (`40.4%` on `demo-na12878` and `32.5%` on `pgx-demo-001`). The Fleet registry card recomputes this aggregate over every run since the instance last started, so the live figure drifts as judges add runs (for example `35.5%` over 3 runs on 2026-10-26, as in the gallery screenshot).
 
 ### Nebius Platform Resources Actually Used (`GET /nebius/platform-usage`)
 
@@ -191,10 +191,13 @@ Object Storage (s3://<bucket>)
 │   ├── container-entrypoint.sh              # Seeds HELIX_DATA_DIR on first start, boots uvicorn + streamlit + caddy
 │   ├── deploy_cloud_run.sh                  # Front-end deploy (API keys + Ed25519 seed injected as env vars, never baked in)
 │   └── deploy_nebius_endpoint.sh            # Same container as a Nebius Serverless AI endpoint (cpu-d3; --check validates session, quota, registry)
+├── seed_data/                               # Seeded Memory Bank (SQLite), bucket mirror, verified L40S job log + JSON (no keys, no secrets)
+├── docs/                                    # JUDGES.md, vision.md, gallery/, architecture diagram, THIRD_PARTY_DATA.md
 └── scripts/
     ├── verify_attestation.py                # Standalone CLI verifier for Ed25519 signatures & SHA-256 consent receipts
     ├── run_demo.sh                          # Triggers Act 1: NA12878 BAM -> Ingest -> Variant Calling -> Analysis
     ├── run_pgx_demo.sh                      # Triggers Act 2: Synthetic PGx VCF -> CPIC + Europe PMC + Tavily
+    ├── run_parabricks_na12878.sh            # Exact Nebius Serverless GPU job spec (pbrun deepvariant) behind aijob-e00p9xmknz4yphfvmm
     └── seed_kinship_demo.py                 # Seeds parent / child / unrelated sealed genomes
 ```
 
@@ -221,6 +224,9 @@ python3 -m venv .venv
 # Set your Nebius Token Factory API key (and optional Tavily API key)
 export NEBIUS_API_KEY="your-nebius-token-factory-api-key"
 export TAVILY_API_KEY="your-optional-tavily-api-key"
+
+# Token for the state-mutating API endpoints (the Command Center reads the same variable; the container generates one if unset)
+export HELIX_API_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
 ```
 
 ### 3. Run the Automated Test Suite (86 Tests)
@@ -244,17 +250,17 @@ cd helixstreet-ui
 The fleet API is also reachable locally at [http://127.0.0.1:8000/docs](http://127.0.0.1:8000/docs). On the public demo both services share one origin behind Caddy: the UI at [https://nebius.helixstreet.io](https://nebius.helixstreet.io), health + enclave keys at [`/api/healthz`](https://nebius.helixstreet.io/api/healthz), and the OpenAPI explorer at [`/api/docs`](https://nebius.helixstreet.io/api/docs).
 
 Open [http://localhost:8080](http://localhost:8080) (or the live deployment at [https://nebius.helixstreet.io](https://nebius.helixstreet.io)):
-- **`1 · Living Twin & Consent Gate` tab:** Run the **6-Step Judge Lifecycle Self-Test** (with live **NVIDIA Nemotron 3 Super** synthesis and **Verbatim passage (Tavily Extract)**), test 1-tap consent revocation, simulate unprompted **HL7 FHIR R4 `MedicationRequest`** and **CPIC Guideline Update** streams, export **W3C Verifiable Credentials**, and inspect the **Simulated scenarios** expander.
-- **`2 · Digital twins` tab:**
-  - Click **📄 Export Clinician PGx & Genomic Report (.md)** to download a complete Markdown clinical report.
+- **Tab 1 · Living Twin & Consent Gate:** Run the **6-Step Judge Lifecycle Self-Test** (with live **NVIDIA Nemotron 3 Super** synthesis and **Verbatim passage (Tavily Extract)**), test 1-tap consent revocation, simulate unprompted **HL7 FHIR R4 `MedicationRequest`** and **CPIC Guideline Update** streams, export **W3C Verifiable Credentials**, and inspect the **Simulated scenarios** expander.
+- **Tab 2 · Digital twins:**
+  - Click **📄 Export Clinician Report (.md)** to download a complete Markdown clinical report.
   - Inspect the **1000 Genomes Phase 3 Super-Population Stratification (`ALL`, `AFR`, `AMR`, `EAS`, `EUR`, `SAS`)** table.
   - Run the **Live Nebius Token Factory Multi-Drug Prescription Safety & Clinical Copilot** (`Nemotron 3 Ultra 550B`, `Super 120B`, or `Nano 30B`) with one-click polypharmacy/oncology scenarios.
   - Explore the **Interactive 3D Biomolecular Structure Viewer (RCSB PDB / WebGL 3Dmol.js)** for all 6 CPIC pharmacogenes (`CYP2C19 · 4GQS`, `DPYD · 1H7X`, `CYP2C9 · 1OG5`, `VKORC1 · 7FFE`, `CYP3A5 · 5VEU`, `SLCO1B1 · 8HND`).
   - Query **Live OpenFDA Drug Label Boxed Warnings**, **Tavily ClinicalTrials.gov Biomarker Matcher**, and **Europe PMC** peer-reviewed citations.
-- **`3 · Pipeline runs` tab:** Inspect **Telemetry-Derived 3-Tier Routing Economics**, the **HIPAA Safe Harbor PII Redaction Diff** (`manifest.json` vs `manifest.scrubbed.json`, synthetic demo PII), the **Per-Step Execution Timeline, Latency & Token Cost Breakdown**, and the **NVIDIA Clara Parabricks (`pbrun deepvariant`) Job Inspector**.
-- **`4 · Private proofs` tab:** Generate & verify **1-of-25** (`demo-na12878`) or **1-of-6** (`pgx-demo-001`) minimal-disclosure Merkle genotype proofs and test zero-genotype-leakage parent/child kinship (`IBS0 = 0`).
-- **`5 · Fleet registry` tab:** Inspect the **Persisted 5-Run/Tier Nebius Token Factory Benchmark**, trigger a live 3-tier ping, and review **Nebius resources actually used**.
-- **`6 · Audit ledger` & `7 · About` tabs:** Verify the **SHA-256 hash-chained audit ledger** and inspect data provenance and Apache-2.0 license details.
+- **Tab 3 · Pipeline runs:** Inspect **Telemetry-Derived 3-Tier Routing Economics**, the **HIPAA Safe Harbor PII Redaction Diff** (`manifest.json` vs `manifest.scrubbed.json`, synthetic demo PII), the **Per-Step Execution Timeline, Latency & Token Cost Breakdown**, and the **NVIDIA Clara Parabricks (`pbrun deepvariant`) Job Inspector**.
+- **Tab 4 · Private proofs:** Generate & verify **1-of-25** (`demo-na12878`) or **1-of-6** (`pgx-demo-001`) minimal-disclosure Merkle genotype proofs and test zero-genotype-leakage parent/child kinship (`IBS0 = 0`).
+- **Tab 5 · Fleet registry:** Inspect the **Persisted 5-Run/Tier Nebius Token Factory Benchmark**, trigger a live 3-tier ping, and review **Nebius resources actually used**.
+- **Tabs 6 · Audit ledger and 7 · About:** Verify the **SHA-256 hash-chained audit ledger** and inspect data provenance and Apache-2.0 license details.
 
 ### 5. Deploy the Container (Public Demo)
 
@@ -316,7 +322,7 @@ python scripts/verify_attestation.py attestation.json --healthz-url https://nebi
    - *Failure mode caught*: DeepVariant / Parabricks VCF outputs use 1-based positions (`POS=10000117`), whereas BED intervals and GA4GH / 1000 Genomes tables use 0-based half-open coordinates (`start_position=10000116`).
    - *Mitigation*: `annotate_with_1000genomes` in `helixstreet_analyst` (`nvidia/Nemotron-3-Ultra-550b-a55b`) explicitly queries `(pos - 1, pos)` and reconciles both coordinate conventions across **Ensembl GRCh37** `1000GENOMES:phase_3` super-populations.
 4. **Live NVIDIA Clara Parabricks 4.3.0-1 Execution on Nebius L40S Serverless GPU (`aijob-e00p9xmknz4yphfvmm`)**:
-   - *Verified Nebius AI Cloud Resources (`eu-north1`)*: Tenant `tenant-e00w20h2nrq40fyrs9`, Project `project-e00btn6gpr00s6vm81sqw7`, Object Storage Bucket `s3://helixstreet-nebius-data` (`storagebucket-e008779569894118469733` on `https://storage.eu-north1.nebius.cloud`), SecretStash (formerly MysteryBox) Secret `mbsec-e00zxbcp465mhbrhwf` (`helixstreet-s3`), GPU Job `aijob-e00p9xmknz4yphfvmm` (`computeinstance-e00dmtv7rrce9b423b`, `gpu-l40s-a` / `1gpu-16vcpu-64gb`, NVIDIA L40S 48GB).
+   - *Verified Nebius AI Cloud Resources (`eu-north1`)*: Object Storage Bucket `s3://helixstreet-nebius-data` (`storagebucket-e008779569894118469733` on `https://storage.eu-north1.nebius.cloud`), SecretStash (formerly MysteryBox) secret `helixstreet-s3`, GPU Job `aijob-e00p9xmknz4yphfvmm` (`computeinstance-e00dmtv7rrce9b423b`, `gpu-l40s-a` / `1gpu-16vcpu-64gb`, NVIDIA L40S 48GB).
    - *Failure modes caught on real L40S GPU*:
      - Parabricks `4.3.0-1` (`src/deepvariant_main.cpp:2069`) rejects `--out-variants` paths ending in `.vcf.gz` (`Expected file ".../output.vcf.gz" to be of type .vcf, exiting`). Fixed in `variant_calling.py` and `scripts/run_parabricks_na12878.sh` to write `--out-variants /tmp/parabricks_work/output.vcf` and compress via `gzip -c` into `/mnt/nebius/results/{user_id}/deepvariant/output.vcf.gz`.
      - Parabricks `4.3.0-1` (`src/Reference.cpp:324`) validates that every `@SQ` contig in the BAM header exists in the reference `.fasta.fai`. Re-headered the GIAB NA12878 `chr20:10,000,000-10,010,000` BAM slice (`sample.bam`, 3.7 MB) with `pysam` to match `chr20` (`LN:63025520`) and added full Illumina `@RG` `PU` tags, enabling `pbrun deepvariant` on the NVIDIA L40S GPU to call **78 variant records (72 PASS)** in **6.049 seconds** (`results/demo-na12878/deepvariant/nebius_job_aijob-e00p9xmknz4yphfvmm.log`).
@@ -331,5 +337,7 @@ python scripts/verify_attestation.py attestation.json --healthz-url https://nebi
 ---
 
 ## License
+
+Third-party data and services used by the demo (GIAB, 1000 Genomes, CPIC, ClinPGx/DPWG, openFDA, RCSB PDB, Tavily, Nebius, NVIDIA) and their terms are listed in [docs/THIRD_PARTY_DATA.md](docs/THIRD_PARTY_DATA.md).
 
 Licensed under the [Apache License, Version 2.0](LICENSE).

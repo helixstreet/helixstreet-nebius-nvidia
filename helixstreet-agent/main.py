@@ -20,6 +20,8 @@ import json
 import logging
 import os
 import re
+import secrets
+from datetime import date
 from pathlib import Path
 
 from fastapi import BackgroundTasks, Depends, FastAPI, HTTPException, Request
@@ -45,12 +47,72 @@ _VCF_UPLOAD_RE = re.compile(r"^uploads/(?P<uid>[A-Za-z0-9._-]{1,40})/[^/]+\.vcf(
 _RESULT_RE = re.compile(r"^results/(?P<uid>[A-Za-z0-9._-]{1,40})/deepvariant/output\.vcf\.gz$")
 
 
-def _require_helix_token(request: Request) -> None:
-    """Enforces `X-Helix-Token == env HELIX_API_TOKEN` on state-mutating POST endpoints."""
-    expected = os.getenv("HELIX_API_TOKEN", config.HELIX_API_TOKEN).strip()
+def _configured_token() -> str:
+    return os.getenv("HELIX_API_TOKEN", config.HELIX_API_TOKEN).strip()
+
+
+def _token_matches(request: Request) -> bool:
+    expected = _configured_token()
     provided = (request.headers.get("X-Helix-Token") or "").strip()
-    if not expected or provided != expected:
+    return bool(expected) and bool(provided) and secrets.compare_digest(provided.encode(), expected.encode())
+
+
+def _require_helix_token(request: Request) -> None:
+    """Enforces `X-Helix-Token == env HELIX_API_TOKEN` on state-mutating POST endpoints.
+    There is no built-in default token: a deployment that forgot to inject one refuses every
+    mutating call (503) instead of accepting a value anyone can read in this repository
+    (infra/container-entrypoint.sh generates a random token when none is injected)."""
+    if not _configured_token():
+        raise HTTPException(status_code=503, detail="HELIX_API_TOKEN is not configured on this deployment.")
+    if not _token_matches(request):
         raise HTTPException(status_code=401, detail="Invalid or missing X-Helix-Token header.")
+
+
+async def _json_body(request: Request) -> dict:
+    """Parses a JSON object body; malformed or non-object bodies are a 400, never a 500."""
+    try:
+        body = await request.json()
+    except Exception:  # noqa: BLE001 - any decode failure is the caller's problem
+        raise HTTPException(status_code=400, detail="Request body must be a JSON object.")
+    if not isinstance(body, dict):
+        raise HTTPException(status_code=400, detail="Request body must be a JSON object.")
+    return body
+
+
+_ID_RE = re.compile(r"^[A-Za-z0-9._-]+$")
+
+
+def _clean_id(value, default: str, field: str, max_len: int = 40) -> str:
+    """Identifier fields (patient, requester, purpose) are persisted into receipts and the
+    audit ledger that every judge sees, so they are restricted to [A-Za-z0-9._-]."""
+    text = str(value if value is not None else default).strip() or default
+    if len(text) > max_len or not _ID_RE.match(text):
+        raise HTTPException(status_code=400, detail=f"{field} must match [A-Za-z0-9._-]{{1,{max_len}}}.")
+    return text
+
+
+# Anonymous callers that reach the API from outside the container (Caddy / Cloud Run add
+# X-Forwarded-For) share a small daily allowance for paid calls, so a script hammering the
+# public API cannot exhaust the judges' shared Nemotron / Tavily quota. The Command Center
+# calls the fleet in-process and is bounded only by the global daily LLM quota; callers that
+# present the deployment's X-Helix-Token are never capped.
+_EXTERNAL_DAILY = {
+    "llm": int(os.getenv("HELIX_EXTERNAL_LLM_CALLS", "100")),
+    "tavily": int(os.getenv("HELIX_EXTERNAL_TAVILY_CALLS", "40")),
+}
+_external_counts: dict[str, int] = {}
+
+
+def _external_allowance(request: Request, kind: str) -> bool:
+    """Returns True when this request may spend one paid `kind` call (and books it)."""
+    if not request.headers.get("x-forwarded-for") or _token_matches(request):
+        return True
+    key = f"{kind}:{date.today().isoformat()}"
+    used = _external_counts.get(key, 0)
+    if used >= _EXTERNAL_DAILY[kind]:
+        return False
+    _external_counts[key] = used + 1
+    return True
 
 
 def _seed_default_kinship_vault():
@@ -121,21 +183,32 @@ def healthz():
 async def ask_pharmacogenomics(request: Request):
     """Clinician / Pharmacy Consent-Gated Pharmacogenomic Attestation API.
     Checks active standing consent BEFORE running any agent or reading the vault."""
-    body = await request.json()
-    return cv.ask_pharmacogenomic_attestation(
-        patient_id=body.get("patient_id", "pgx-demo-001"),
-        requester=body.get("requester", "demo-pharmacy-basel"),
-        purpose=body.get("purpose", "drug_safety_dispensing_check"),
-        drug=body.get("drug", "clopidogrel"),
+    body = await _json_body(request)
+    patient_id = _clean_id(body.get("patient_id"), "pgx-demo-001", "patient_id")
+    requester = _clean_id(body.get("requester"), "demo-pharmacy-basel", "requester")
+    purpose = _clean_id(body.get("purpose"), "drug_safety_dispensing_check", "purpose", 60)
+    use_nemotron = bool(body.get("use_nemotron", True))
+    llm_allowed = use_nemotron and _external_allowance(request, "llm")   # validated first: a 400 books nothing
+    result = cv.ask_pharmacogenomic_attestation(
+        patient_id=patient_id,
+        requester=requester,
+        purpose=purpose,
+        drug=str(body.get("drug") or "clopidogrel")[:60],
         question=str(body.get("question", ""))[:500],
-        use_nemotron=bool(body.get("use_nemotron", True)),
+        use_nemotron=llm_allowed,
     )
+    if use_nemotron and not llm_allowed:
+        result["llm_note"] = (
+            f"Today's anonymous external allowance of {_EXTERNAL_DAILY['llm']} live Nemotron explanations is "
+            "used up; this answer uses the deterministic guideline template. The Command Center is unaffected."
+        )
+    return result
 
 
 @app.post("/verify")
 async def verify_attestation_endpoint(request: Request):
     """Cryptographically verifies an Ed25519-signed phenotype attestation bundle."""
-    body = await request.json()
+    body = await _json_body(request)
     trusted_key = body.get("trusted_public_key_ed25519")
     trusted_keys = body.get("trusted_public_keys_ed25519")
     return cv.verify_signed_attestation(
@@ -156,7 +229,7 @@ def get_patient_consents(patient_id: str):
 
 @app.post("/consents/grant", dependencies=[Depends(_require_helix_token)])
 async def grant_patient_consent(request: Request):
-    body = await request.json()
+    body = await _json_body(request)
     return cv.grant_consent(
         patient_id=body.get("patient_id", "pgx-demo-001"),
         requester=body.get("requester", "demo-pharmacy-basel"),
@@ -168,7 +241,7 @@ async def grant_patient_consent(request: Request):
 
 @app.post("/consents/revoke", dependencies=[Depends(_require_helix_token)])
 async def revoke_patient_consent(request: Request):
-    body = await request.json()
+    body = await _json_body(request)
     return cv.revoke_consent(
         patient_id=body.get("patient_id", "pgx-demo-001"),
         consent_id=body.get("consent_id", "cns-pharm-basel-001"),
@@ -179,7 +252,7 @@ async def revoke_patient_consent(request: Request):
 @app.post("/fhir/MedicationRequest", dependencies=[Depends(_require_helix_token)])
 async def fhir_medication_request_webhook(request: Request):
     """Always-On Living Twin HL7 FHIR R4 MedicationRequest Watcher endpoint."""
-    body = await request.json()
+    body = await _json_body(request)
     use_nemotron = bool(body.get("use_nemotron", True))
     if body.get("resourceType") != "MedicationRequest":
         body = cv.build_fhir_medication_request(
@@ -197,7 +270,7 @@ async def fhir_medication_request_webhook(request: Request):
 @app.post("/rwe/outcome", dependencies=[Depends(_require_helix_token)])
 async def record_closed_loop_rwe(request: Request):
     """Consented Closed-Loop Real-World Evidence (RWE) outcome endpoint."""
-    body = await request.json()
+    body = await _json_body(request)
     return cv.record_rwe_outcome(
         patient_id=body.get("patient_id", "pgx-demo-001"),
         alert_id=body.get("alert_id", "alt-seed-escitalopram-001"),
@@ -209,13 +282,19 @@ async def record_closed_loop_rwe(request: Request):
 
 
 @app.get("/guidelines/watch")
-async def guideline_watch_endpoint(drug: str = "clopidogrel", gene: str = "CYP2C19"):
+async def guideline_watch_endpoint(request: Request, drug: str = "clopidogrel", gene: str = "CYP2C19"):
     """Live guideline watch (no alert raised): Tavily Search restricted to the guideline
     publishers (CPIC, ClinPGx / PharmGKB, DPWG), ranked to prefer the canonical CPIC
     guideline page, plus Tavily Extract of that page and a SHA-256 passage fingerprint."""
     from fleet.tools.knowledge_graph import query_knowledge_graph
     from fleet.tools.pharmacogenomics import watch_guideline_updates
 
+    if not _external_allowance(request, "tavily"):
+        raise HTTPException(
+            status_code=429,
+            detail=f"Today's anonymous external allowance of {_EXTERNAL_DAILY['tavily']} live guideline watches "
+            "is used up; use the Command Center's Stream B button or pass X-Helix-Token.",
+        )
     kg = query_knowledge_graph(drug[:60])
     return watch_guideline_updates(
         drug=drug[:60], gene=gene[:20], fallback_url=kg.get("guideline_url", "") if kg.get("found") else ""
@@ -226,7 +305,7 @@ async def guideline_watch_endpoint(drug: str = "clopidogrel", gene: str = "CYP2C
 async def guideline_update_webhook(request: Request):
     """Always-On Living Twin guideline stream. Omit `new_guideline_version` to run the
     live Tavily watch; supply it to replay an explicit registry push (webhook mode)."""
-    body = await request.json()
+    body = await _json_body(request)
     return cv.ingest_guideline_update(
         patient_id=body.get("patient_id", "pgx-demo-001"),
         gene=body.get("gene", "CYP2C19"),
@@ -240,7 +319,7 @@ async def guideline_update_webhook(request: Request):
 @app.post("/federated/cohort-query")
 async def federated_cohort_query_endpoint(request: Request):
     """Simulated scenario: Zero-Genome-Pooling Federated PGx & Equity Cohort Aggregator."""
-    body = await request.json()
+    body = await _json_body(request)
     return cv.run_federated_cohort_query(
         gene=body.get("gene", "CYP2C19"),
         drug=body.get("drug", "clopidogrel"),
@@ -250,7 +329,7 @@ async def federated_cohort_query_endpoint(request: Request):
 @app.post("/a2a/negotiate", dependencies=[Depends(_require_helix_token)])
 async def a2a_negotiate_endpoint(request: Request):
     """Simulated scenario: Agent-to-Agent (A2A) Minimal-Disclosure Regimen Negotiation."""
-    body = await request.json()
+    body = await _json_body(request)
     return cv.negotiate_a2a_polypharmacy_regimen(
         patient_id=body.get("patient_id", "pgx-demo-001"),
         requester=body.get("requester", "demo-university-hospital"),
@@ -278,11 +357,15 @@ async def bionemo_rfd4_design_endpoint(request: Request):
     """Planned roadmap integration for NVIDIA BioNeMo RFD4-Proteina (mock, not executed)."""
     from fleet.tools.pharmacogenomics import design_rfd4_proteina_rescue
 
-    body = await request.json()
+    body = await _json_body(request)
+    try:
+        beam = max(1, min(64, int(body.get("reward_beam_width", 8))))
+    except (TypeError, ValueError):
+        raise HTTPException(status_code=400, detail="reward_beam_width must be an integer.")
     return design_rfd4_proteina_rescue(
-        gene=body.get("gene", "DPYD"),
-        patient_id=body.get("patient_id", "pgx-demo-001"),
-        reward_beam_width=int(body.get("reward_beam_width", 8)),
+        gene=str(body.get("gene") or "DPYD")[:20],
+        patient_id=_clean_id(body.get("patient_id"), "pgx-demo-001", "patient_id"),
+        reward_beam_width=beam,
     )
 
 
@@ -432,7 +515,7 @@ async def _run_pipeline_background(pipeline, uid: str, prompt: str, bucket: str,
 
 @app.post("/storage-event", dependencies=[Depends(_require_helix_token)])
 async def handle_storage_event(request: Request, background_tasks: BackgroundTasks):
-    body = await request.json()
+    body = await _json_body(request)
     try:
         bucket, name, generation = _parse_gcs_event(body)
     except (ValueError, KeyError) as e:

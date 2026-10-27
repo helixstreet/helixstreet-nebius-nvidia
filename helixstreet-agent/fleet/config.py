@@ -73,7 +73,9 @@ NEBIUS_BUCKET_RESOURCE_ID = os.getenv(
 )
 
 # API Auth & Daily LLM Quota for public judging
-HELIX_API_TOKEN = os.getenv("HELIX_API_TOKEN", "helixstreet-demo-token-2026")
+# No built-in default: a deployment without HELIX_API_TOKEN refuses state-mutating calls (503).
+# infra/container-entrypoint.sh generates a random token when none is injected.
+HELIX_API_TOKEN = os.getenv("HELIX_API_TOKEN", "")
 HELIX_DAILY_LLM_CALLS = int(os.getenv("HELIX_DAILY_LLM_CALLS", "300"))
 
 # Backwards-compatible aliases used by existing modules/tests

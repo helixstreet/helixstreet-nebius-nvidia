@@ -59,7 +59,7 @@ Thumbs.db
 .claude/
 
 # Local voiceover takes & hackathon submission drafts (keep out of the repo)
-docs/*.mp3
+*.mp3
 *.mp4
 *.wav
 docs/video-*.md

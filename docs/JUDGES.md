@@ -4,14 +4,16 @@ Live demo: **https://nebius.helixstreet.io** · API explorer: **https://nebius.h
 
 Everything below runs against the live deployment. The Nebius-hosted mirror behaves identically (same image, same enclave key, its own run history and daily quota). No login is needed. Live LLM calls share a daily quota; when it is exhausted the UI says so and falls back to the deterministic guideline template (clearly labelled).
 
-## The 60-second path
+**What you are looking at (for non-genomics judges):** clopidogrel is the blood thinner given after a coronary stent. Roughly one in four Europeans and more than half of East Asians carry a CYP2C19 variant that stops the drug from activating, so the stent can clot; the CPIC Level-A guideline says these *poor metabolizers* should get prasugrel or ticagrelor instead. Helixstreet lets the pharmacy learn exactly that, as a signed attestation, without ever seeing the genome.
+
+## The 5-minute path
 
 1. Open the demo. The first tab, **Living Twin & Consent Gate**, is the product: a sealed genome answering a pharmacy's drug-safety question without releasing raw genome bytes.
 2. Click **▶ Run Complete 6-Step Lifecycle Self-Test**. In about ten seconds you get a table showing: consent grant → Ed25519-signed attestation explained live by **NVIDIA Nemotron 3 Super on Nebius Token Factory** (latency and token counts shown) → signature verification → one-tap revocation → signed refusal receipt → unprompted HL7 FHIR R4 prescription alert → consent restored.
-3. Click **⚡ Ask Patient's Living Twin** (any drug in the dropdown). Read the ranked alternatives, the **verbatim passage fetched with Tavily Extract** from the published CPIC guideline, and the Nemotron summary. Click **🔐 Verify Ed25519 Signature & Receipt Hash**, then **📥 Download Signed Attestation** and verify it offline (next section).
+3. Click **⚡ Ask Patient's Living Twin** (any drug in the dropdown; if an earlier visitor left the pharmacy consent revoked, click **🟢 Restore Consent** first — the self-test in step 2 restores it as well). Read the ranked alternatives, the **verbatim passage fetched with Tavily Extract** from the published CPIC guideline, and the Nemotron summary. Click **🔐 Verify Ed25519 Signature & Receipt Hash**, then **📥 Download Signed Attestation** and verify it offline (next section).
 4. Still on the Living Twin tab, open **Step 6 · FHIR R4 Prescription Watcher** and click **Stream B: Live CPIC/DPWG Guideline Watch (Tavily)**. The twin finds the governing CPIC / ClinPGx / DPWG guideline source with Tavily Search, extracts the guideline text with Tavily Extract (the CPIC publication on PubMed Central when the publisher page blocks fetching), fingerprints it and tells you whether the guideline changed since its previous check (`execution_mode: live_tavily_watch`).
 5. In the sidebar click **Start PGx demo run**. The fleet acknowledges the run immediately (HTTP 202) and the **Pipeline runs** tab shows a progress banner that refreshes itself every 4 s while the agents work (about 45 seconds). When it turns green the tab shows the three-agent analysis with per-step model, latency, tokens and cost (Nemotron 3 Ultra for analysis and pharmacogenomics, Nemotron 3 Super for twin synthesis), and **Digital twins** lists the new twin. The **Start demo run** button above it runs the full WGS chain instead (intake → Parabricks replay → analysis → twin, about 90 seconds) and ends in the same green banner.
-6. **Pipeline runs** → select `demo-na12878` → open the **NVIDIA Clara Parabricks** inspector and the verified **Nebius L40S job log** (`aijob-e00p9xmknz4yphfvmm`, 78 records / 72 PASS in 6.049 s).
+6. **Pipeline runs** → select `demo-na12878` → scroll to **NVIDIA Clara Parabricks Secondary Analysis (pbrun deepvariant)** and open the **📄 Job log** expander: the verified Nebius L40S job `aijob-e00p9xmknz4yphfvmm`, 78 records / 72 PASS in 6.049 s.
 
 ## Verify a signed attestation offline
 
@@ -62,6 +64,6 @@ CI runs the same suite on Python 3.11 and 3.12 on every push (`.github/workflows
 
 ## Known limits
 
-- The public demo keeps judge-created runs in a single persistent instance; a redeploy resets to the seeded state.
+- The public demo keeps judge-created runs in a single instance; any instance restart (redeploy, crash, platform maintenance) resets it to the seeded state. Attestations you downloaded still verify afterwards because the enclave key is derived from a seed injected as an environment variable, not from instance state.
 - State-mutating API endpoints (`/api/consents/*`, `/api/rwe/outcome`, `/api/guidelines/update`, `/api/a2a/negotiate`, `/api/storage-event`) require the deployment's `X-Helix-Token`; the UI buttons use it for you.
 - All data is public and consented (GIAB NA12878, 1000 Genomes) or fully synthetic. Research-grade only, never medical advice.

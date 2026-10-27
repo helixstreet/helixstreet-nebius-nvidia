@@ -4,6 +4,14 @@
 # HELIX_DATA_DIR on first start only, so judge interactions persist for the instance lifetime.
 set -eu
 
+# The fleet API refuses state-mutating calls without HELIX_API_TOKEN (there is no built-in default).
+# Deployments inject it (infra/deploy_*.sh); a bare `docker run` gets a random per-container token.
+if [ -z "${HELIX_API_TOKEN:-}" ]; then
+  HELIX_API_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
+  export HELIX_API_TOKEN
+  echo "HELIX_API_TOKEN not set: generated a random token for this container (needed only by raw API clients)."
+fi
+
 DATA_DIR="${HELIX_DATA_DIR:-/tmp/helixstreet-nebius}"
 mkdir -p "$DATA_DIR"
 if [ ! -f "$DATA_DIR/helixstreet_state.sqlite3" ]; then

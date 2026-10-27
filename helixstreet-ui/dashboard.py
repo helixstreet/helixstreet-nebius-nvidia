@@ -1,10 +1,10 @@
 """Helixstreet — The Consent-Native Pharmacogenomics Layer (Nebius x NVIDIA Edition).
 
-Live views over the fleet's Memory Bank state:
-1. Pipeline runs (with NVIDIA Nemotron 3 reasoning traces, Parabricks L40S job provenance, and telemetry-derived economics)
+Live views over the fleet's Memory Bank state (tab order as rendered):
+1. Living Twin & Consent Gate (Ed25519 attestations, Verbatim passage (Tavily Extract), 1-tap consent revocation, FHIR R4 watcher, and clearly labelled simulated scenarios)
 2. Digital twins (live variant counts, 1000 Genomes super-populations, CPIC Level-A guidance, 3D RCSB PDB structures, and live Token Factory Clinical Copilot)
-3. Private proofs (minimal-disclosure salted SHA-256 Merkle proofs and IBS0 kinship)
-4. Living Twin & Consent Gate (Ed25519 attestations, Verbatim passage (Tavily Extract), 1-tap consent revocation, FHIR R4 watcher, and clearly labelled simulated scenarios)
+3. Pipeline runs (with NVIDIA Nemotron 3 reasoning traces, Parabricks L40S job provenance, and telemetry-derived economics)
+4. Private proofs (minimal-disclosure salted SHA-256 Merkle proofs and IBS0 kinship)
 5. Fleet registry (3-tier Nemotron routing catalog, persisted benchmark medians, and verified Nebius platform usage)
 6. Audit ledger (tamper-evident SHA-256 hash chain)
 7. About (architecture, honest data-flow boundaries, limitations, and Apache-2.0 license)
