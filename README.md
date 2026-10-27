@@ -18,7 +18,7 @@
 
 <p align="center">
   <a href="https://github.com/helixstreet/helixstreet-nebius-nvidia/actions/workflows/ci.yml"><img src="https://github.com/helixstreet/helixstreet-nebius-nvidia/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
-  <img src="https://img.shields.io/badge/tests-86%20passing-brightgreen" alt="86 tests">
+  <img src="https://img.shields.io/badge/tests-92%20passing-brightgreen" alt="92 tests">
   <img src="https://img.shields.io/badge/license-Apache--2.0-blue" alt="Apache-2.0">
   <a href="https://nebius.helixstreet.io"><img src="https://img.shields.io/badge/live%20demo-nebius.helixstreet.io-0e7490" alt="Live demo"></a>
 </p>
@@ -229,7 +229,7 @@ export TAVILY_API_KEY="your-optional-tavily-api-key"
 export HELIX_API_TOKEN="$(python3 -c 'import secrets; print(secrets.token_urlsafe(24))')"
 ```
 
-### 3. Run the Automated Test Suite (86 Tests)
+### 3. Run the Automated Test Suite (92 Tests)
 
 ```bash
 cd helixstreet-agent && ../.venv/bin/python -m pytest -q
